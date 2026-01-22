@@ -11,10 +11,10 @@ class DenseRetriever:
             self.collection: Collection = create_chunk_collection(collection_name)
             self.collection.load()
 
-    def retrieve(self, query_embedding: np.ndarray, top_k: int = 5):
+    def retrieve(self, query_dense_embedding: np.ndarray, top_k: int = 5):
         results = self.collection.search(
-            data=[query_embedding.tolist()],
-            anns_field="embedding",
+            data=[query_dense_embedding.tolist()],
+            anns_field="dense_embedding",
             param={"metric_type": "IP", "params": {}},
             limit=top_k,
             output_fields=[

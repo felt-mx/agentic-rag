@@ -1,7 +1,7 @@
 from retrieval.models import ScoredChunk
 
 
-def normalize_dense_scores(chunks: list[ScoredChunk]) -> list[ScoredChunk]:
+def normalize_scores(chunks: list[ScoredChunk]) -> list[ScoredChunk]:
     if not chunks:
         return chunks
 

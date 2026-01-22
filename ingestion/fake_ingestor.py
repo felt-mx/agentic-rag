@@ -31,7 +31,8 @@ def fake_generate_chunks(doc: Document) -> list[Chunk]:
             section_id=section.section_id,
             text=text,
             metadata=doc.metadata,
-            embedding=np.random.rand(768),
+            dense_embedding=np.random.rand(768),  # Renamed from 'embedding'
+            image_embedding=np.random.rand(768),  # Optional: can be None
         )
         chunks.append(chunk)
 

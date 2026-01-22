@@ -2,14 +2,33 @@ from pymilvus import Collection
 
 
 def create_dense_index(collection: Collection):
-    index_params = {
-        "metric_type": "IP",  # OR Cosine / L2
-        "index_type": "HNSW",
-        "params": {"M": 16, "efConstruction": 200},
-    }
+    # Dense embedding index
+    collection.create_index(
+        field_name="dense_embedding",
+        index_params={
+            "index_type": "AUTOINDEX",
+            "metric_type": "IP",
+        },
+        index_name="dense_embedding_index",
+    )
 
-    if not collection.has_index():
-        collection.create_index(
-            field_name="embedding",
-            index_params=index_params,
-        )
+    # Sparse embedding index
+    collection.create_index(
+        field_name="sparse_embedding",
+        index_params={
+            "index_type": "SPARSE_INVERTED_INDEX",
+            "metric_type": "BM25",
+            "params": {"inverted_index_algo": "DAAT_MAXSCORE"},
+        },
+        index_name="sparse_embedding_index",
+    )
+
+    # Image embedding index
+    collection.create_index(
+        field_name="image_embedding",
+        index_params={
+            "index_type": "AUTOINDEX",
+            "metric_type": "IP",
+        },
+        index_name="image_embedding_index",
+    )

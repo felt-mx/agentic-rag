@@ -1,18 +1,68 @@
 import numpy as np
+from typing import Optional
 from retrieval.query.intake import intake_query
 from retrieval.retrieve.dense import DenseRetriever
-from retrieval.scoring.normalize import normalize_dense_scores
+from retrieval.scoring.normalize import normalize_scores
+from retrieval.retrieve.hybrid import HybridRetriever
 
 
 class RetrievalPipeline:
-    def __init__(self):
-        self.retriever = DenseRetriever()
+    def __init__(self, dense_weight: float = 0.5, sparse_weight: float = 0.5):
+        self.retriever = HybridRetriever()
+        self.dense_weight = dense_weight
+        self.sparse_weight = sparse_weight
 
-    def retrieve(self, raw_query: str):
+    def retrieve(
+        self,
+        raw_query: str,
+        top_k: int = 5,
+        rerank_method: str = "rrf",
+        image_query: Optional[np.ndarray] = None,
+        use_image: bool = False,
+    ):
         query = intake_query(raw_query)
-        # Placeholder for actual embedding generation
-        query_embedding = np.random.rand(768)
-        results = self.retriever.retrieve(query_embedding)
-        results = normalize_dense_scores(results)
+
+        # Generate dense embedding from the query text
+        dense_embedding = self.generate_dense_embedding(query_text=query["text"])
+
+        # Generate image embedding if image query is provided
+        image_embedding = None
+        if use_image and image_query is not None:
+            image_embedding = self.generate_image_embedding(image_query)
+
+        weights = None
+        if rerank_method == "weighted":
+            if use_image and image_embedding is not None:
+                # Normalize weights to sum to 1
+                total = self.dense_weight + self.sparse_weight
+                image_weight = 0.3
+                dense_w = (self.dense_weight / total) * (1 - image_weight)
+                sparse_w = (self.sparse_weight / total) * (1 - image_weight)
+                weights = [dense_w, sparse_w, image_weight]
+            else:
+                # Normalize dense and sparse weights to sum to 1
+                total = self.dense_weight + self.sparse_weight
+                weights = [self.dense_weight / total, self.sparse_weight / total]
+
+        # Perform hybrid retrieval
+        results = self.retriever.retrieve(
+            query_text=query["text"],
+            dense_embedding=dense_embedding,
+            image_embedding=image_embedding,
+            top_k=top_k,
+            rerank_method=rerank_method,
+            use_image=use_image,
+        )
+
+        # Normalize scores
+        results = normalize_scores(results)
 
         return results
+
+    def generate_dense_embedding(self, query_text: str) -> np.ndarray:
+        return np.random.rand(768)  # Placeholder for actual embedding generation logic
+
+    def generate_image_embedding(self, image_data: np.ndarray) -> np.ndarray:
+        return np.random.rand(
+            512
+        )  # Placeholder for actual image embedding generation logic

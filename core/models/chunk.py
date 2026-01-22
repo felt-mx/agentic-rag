@@ -10,4 +10,5 @@ class Chunk:
     section_id: str
     text: str
     metadata: Dict[str, Any]
-    embedding: np.ndarray = None  # Optional embedding vector for now
+    dense_embedding: np.ndarray
+    image_embedding: np.ndarray
