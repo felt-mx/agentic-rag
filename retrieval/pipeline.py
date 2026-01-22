@@ -1,9 +1,9 @@
 import numpy as np
 from typing import Optional
 from retrieval.query.intake import intake_query
-from retrieval.retrieve.dense import DenseRetriever
 from retrieval.scoring.normalize import normalize_scores
 from retrieval.retrieve.hybrid import HybridRetriever
+from core.models.embedder import VLLMClient
 
 
 class RetrievalPipeline:
@@ -11,8 +11,9 @@ class RetrievalPipeline:
         self.retriever = HybridRetriever()
         self.dense_weight = dense_weight
         self.sparse_weight = sparse_weight
+        self.embedder = VLLMClient()
 
-    def retrieve(
+    async def retrieve(
         self,
         raw_query: str,
         top_k: int = 5,
@@ -23,7 +24,7 @@ class RetrievalPipeline:
         query = intake_query(raw_query)
 
         # Generate dense embedding from the query text
-        dense_embedding = self.generate_dense_embedding(query_text=query["text"])
+        dense_embedding = await self.generate_dense_embedding(query_text=query["text"])
 
         # Generate image embedding if image query is provided
         image_embedding = None
@@ -51,6 +52,7 @@ class RetrievalPipeline:
             image_embedding=image_embedding,
             top_k=top_k,
             rerank_method=rerank_method,
+            weights=weights,
             use_image=use_image,
         )
 
@@ -59,8 +61,9 @@ class RetrievalPipeline:
 
         return results
 
-    def generate_dense_embedding(self, query_text: str) -> np.ndarray:
-        return np.random.rand(768)  # Placeholder for actual embedding generation logic
+    async def generate_dense_embedding(self, query_text: str) -> np.ndarray:
+        embedding = await self.embedder.generate(query_text)
+        return np.array(embedding)
 
     def generate_image_embedding(self, image_data: np.ndarray) -> np.ndarray:
         return np.random.rand(

@@ -29,7 +29,7 @@ def upsert_chunks(chunks: List[Chunk], collection_name: str = "chunks"):
             entity["image_embedding"] = chunk.image_embedding.tolist()
         else:
             # Provide a zero vector if no image
-            entity["image_embedding"] = [0.0] * 768
+            entity["image_embedding"] = [0.0] * 1024
 
         data.append(entity)
 

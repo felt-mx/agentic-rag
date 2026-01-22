@@ -8,7 +8,7 @@ from pymilvus import (
 )
 
 
-def create_chunk_collection(name: str = "chunks", dim=768) -> Collection:
+def create_chunk_collection(name: str = "chunks", dim=1024) -> Collection:
     fields = [
         FieldSchema(
             name="chunk_id", dtype=DataType.VARCHAR, is_primary=True, max_length=64
