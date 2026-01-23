@@ -8,7 +8,7 @@ from core.models.embedder import VLLMClient
 
 
 class RetrievalPipeline:
-    def __init__(self, dense_weight: float = 0.6, sparse_weight: float = 0.4):
+    def __init__(self, dense_weight: float = 0.7, sparse_weight: float = 0.3):
         self.retriever = HybridRetriever()
         self.dense_weight = dense_weight
         self.sparse_weight = sparse_weight
@@ -23,7 +23,7 @@ class RetrievalPipeline:
         rerank_method: str = "weighted",
         image_query: Optional[np.ndarray] = None,
         use_image: bool = False,
-        score_threshold: float = 0.7,
+        score_threshold: float = 0.15,
     ):
         query = intake_query(raw_query)
 
@@ -60,6 +60,8 @@ class RetrievalPipeline:
             use_image=use_image,
         )
 
+        print("Retrieved results before reranking:", results)
+
         if self.reranker and results:
             results = await self.reranker.rerank(
                 query=query["text"],
@@ -72,7 +74,18 @@ class RetrievalPipeline:
 
         results_filtered = [r for r in results if r.score >= score_threshold]
 
-        return results_filtered
+        formatted_results = [
+            {
+                "answer": r.text,
+                "score": r.score,
+                "metadata": {
+                    "file_name": r.metadata.get("file_name"),
+                    "section_title": r.metadata.get("section_title"),
+                },
+            }
+            for r in results_filtered
+        ]
+        return formatted_results
 
     async def generate_dense_embedding(self, query_text: str) -> np.ndarray:
         embedding = await self.embedder.generate(query_text)
