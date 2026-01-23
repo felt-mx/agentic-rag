@@ -14,7 +14,7 @@ async def main():
     results = await retrieval_pipeline.retrieve(
         "what are the active ingredients of arcoxia?",
         top_k=5,
-        rerank_method="rrf",
+        rerank_method="weighted",
     )
 
     print(

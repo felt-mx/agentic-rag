@@ -7,7 +7,7 @@ from core.models.embedder import VLLMClient
 
 
 class RetrievalPipeline:
-    def __init__(self, dense_weight: float = 0.5, sparse_weight: float = 0.5):
+    def __init__(self, dense_weight: float = 0.6, sparse_weight: float = 0.4):
         self.retriever = HybridRetriever()
         self.dense_weight = dense_weight
         self.sparse_weight = sparse_weight
@@ -17,9 +17,10 @@ class RetrievalPipeline:
         self,
         raw_query: str,
         top_k: int = 5,
-        rerank_method: str = "rrf",
+        rerank_method: str = "weighted",
         image_query: Optional[np.ndarray] = None,
         use_image: bool = False,
+        score_threshold: float = 0.7,
     ):
         query = intake_query(raw_query)
 
@@ -57,9 +58,11 @@ class RetrievalPipeline:
         )
 
         # Normalize scores
-        results = normalize_scores(results)
+        # results = normalize_scores(results)
 
-        return results
+        results_filtered = [r for r in results if r.score >= score_threshold]
+
+        return results_filtered
 
     async def generate_dense_embedding(self, query_text: str) -> np.ndarray:
         embedding = await self.embedder.generate(query_text)
