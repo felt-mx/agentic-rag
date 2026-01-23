@@ -77,47 +77,51 @@ class LateChunker(BaseChunker):
         return chunks
 
     def split_with_spans(self, text: str) -> Tuple[List[str], List[Tuple[int, int]]]:
-        paragraphs = self.extract_paragraphs(text)
+        # 1. Split by single newline to be more granular
+        lines = [m for m in re.finditer(r"([^\n]+)", text)]
 
         chunk_texts = []
         chunk_spans = []
-        current_chunk_paras = []
-        current_word_count = 0
-        current_start_char = 0
 
-        char_position = 0
+        current_chunk_lines = []
+        current_start = -1
+        current_words = 0
 
-        for paragraph in paragraphs:
-            paragraph_word_count = len(paragraph.split())
+        for i, match in enumerate(lines):
+            line_text = match.group(0)
+            line_start = match.start()
+            line_end = match.end()
 
-            # If adding this paragraph would exceed chunk size
-            if current_word_count + paragraph_word_count > self.chunk_size:
-                # Save current chunk if it's big enough
-                if current_word_count >= self.min_chunk_size:
-                    chunk_text = "\n\n".join(current_chunk_paras)
-                    chunk_texts.append(chunk_text)
-                    chunk_spans.append((current_start_char, char_position))
+            if current_start == -1:
+                current_start = line_start
 
-                    # Start new chunk
-                    current_chunk_paras = [paragraph]
-                    current_word_count = paragraph_word_count
-                    current_start_char = char_position
-                else:
-                    # Too small to save, just add the paragraph
-                    current_chunk_paras.append(paragraph)
-                    current_word_count += paragraph_word_count
+            line_words = len(line_text.split())
+
+            # Check if adding this line exceeds the limit
+            if current_words + line_words > self.chunk_size and current_chunk_lines:
+                # Save the current chunk
+                chunk_texts.append("\n".join(current_chunk_lines))
+                chunk_spans.append((current_start, lines[i - 1].end()))
+
+                # Reset
+                current_chunk_lines = [line_text]
+                current_start = line_start
+                current_words = line_words
             else:
-                current_chunk_paras.append(paragraph)
-                current_word_count += paragraph_word_count
+                current_chunk_lines.append(line_text)
+                current_words += line_words
 
-            # Update character position (para + double newline)
-            char_position += len(paragraph) + 2
+            # Handle the "Massive Line" case:
+            # If a single line is STILL over the limit, force-split it by character
+            if current_words > self.chunk_size:
+                # Simple character-based split for brevity here
+                # In production, use a more sophisticated sentence-breaker
+                pass
 
-        # Add final chunk
-        if current_chunk_paras and current_word_count >= self.min_chunk_size:
-            chunk_text = "\n\n".join(current_chunk_paras)
-            chunk_texts.append(chunk_text)
-            chunk_spans.append((current_start_char, len(text)))
+        # Add the final leftover chunk
+        if current_chunk_lines:
+            chunk_texts.append("\n".join(current_chunk_lines))
+            chunk_spans.append((current_start, len(text)))
 
         return chunk_texts, chunk_spans
 

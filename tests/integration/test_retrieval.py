@@ -12,13 +12,13 @@ from retrieval.pipeline import RetrievalPipeline
 async def main():
     retrieval_pipeline = RetrievalPipeline()
     results = await retrieval_pipeline.retrieve(
-        "What is the main goal of the semantic chunking step?",
+        "what are the active ingredients of arcoxia?",
         top_k=5,
         rerank_method="rrf",
     )
 
     print(
-        f"Retrieved {len(results)} results for the query: 'What is the main goal of the semantic chunking step?'"
+        f"Retrieved {len(results)} results for the query: 'what are the active ingredients of arcoxia?'"
     )
 
     print("Top results:")
