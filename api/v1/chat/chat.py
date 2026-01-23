@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from core.models.generator import VLLMClient
 from retrieval.pipeline import RetrievalPipeline
-from retrieval.answer.prompt_builder import build_prompt
+from retrieval.answer.prompt_builder import build_prompt, build_reformulation_prompt, build_retry_prompt
 
 chat_router = APIRouter(prefix="/chat")
 
@@ -16,20 +16,47 @@ async def chat(request: ChatRequest):
     try:
         retrieval_pipeline = RetrievalPipeline()
         vllm_client = VLLMClient()
+        count = 0
+        input_texts = []
+
+        reformulation_prompt = build_reformulation_prompt(request.text)
+        reformulated_response = await vllm_client.generate(
+            reformulation_prompt, tools=None, tool_choice=None
+        )
+
+        reformulated_text = reformulated_response.message.content.strip()
 
         results = await retrieval_pipeline.retrieve(
-            request.text,
+            reformulated_text,
             top_k=5,  # Default 5 if not specified
             retrieval_k=20,  # Default 20 if not specified
             rerank_method="weighted",  # Default "weighted" if not specified
         )
 
-        if not results:
-            answer = "No relevant information found."
-            top_result = None
-        else:
-            top_result = results[0]  # Get the top result (highest score)
-            answer = top_result["answer"]
+        while True:
+            if not results and count < 3:
+                top_result = None
+                answer = "No relevant information found."
+                count += 1
+
+                input_texts.append(reformulated_text)
+                retry_prompt = build_retry_prompt(
+                    reformulated_text)
+
+                reformulated_response = await vllm_client.generate(
+                    retry_prompt, tools=None, tool_choice=None
+                )
+                reformulated_text = reformulated_response.message.content.strip()
+                results = await retrieval_pipeline.retrieve(
+                    reformulated_text,
+                    top_k=5,  # Default 5 if not specified
+                    retrieval_k=20,  # Default 20 if not specified
+                    rerank_method="weighted",  # Default "weighted" if not specified
+                )
+            else:  # Either results found or max retries reached
+                top_result = results[0]  # Get the top result (highest score)
+                answer = top_result["answer"]
+                break
 
         prompt = build_prompt(answer, request.text, None)
 
