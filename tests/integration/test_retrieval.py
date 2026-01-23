@@ -12,13 +12,14 @@ from retrieval.pipeline import RetrievalPipeline
 async def main():
     retrieval_pipeline = RetrievalPipeline()
     results = await retrieval_pipeline.retrieve(
-        "what are the active ingredients of arcoxia?",
+        "how many moons are there in teyvat?",
         top_k=5,
+        retrieval_k=20,
         rerank_method="weighted",
     )
 
     print(
-        f"Retrieved {len(results)} results for the query: 'what are the active ingredients of arcoxia?'"
+        f"Retrieved {len(results)} results for the query: 'how many moons are there in teyvat?'"
     )
 
     print("Top results:")

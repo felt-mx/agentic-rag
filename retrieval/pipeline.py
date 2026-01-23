@@ -3,6 +3,7 @@ from typing import Optional
 from retrieval.query.intake import intake_query
 from retrieval.scoring.normalize import normalize_scores
 from retrieval.retrieve.hybrid import HybridRetriever
+from retrieval.rerank.cross_encoder import CrossEncoderReranker
 from core.models.embedder import VLLMClient
 
 
@@ -11,12 +12,14 @@ class RetrievalPipeline:
         self.retriever = HybridRetriever()
         self.dense_weight = dense_weight
         self.sparse_weight = sparse_weight
+        self.reranker = CrossEncoderReranker()
         self.embedder = VLLMClient()
 
     async def retrieve(
         self,
         raw_query: str,
         top_k: int = 5,
+        retrieval_k: int = 20,
         rerank_method: str = "weighted",
         image_query: Optional[np.ndarray] = None,
         use_image: bool = False,
@@ -51,11 +54,18 @@ class RetrievalPipeline:
             query_text=query["text"],
             dense_embedding=dense_embedding,
             image_embedding=image_embedding,
-            top_k=top_k,
+            top_k=retrieval_k,
             rerank_method=rerank_method,
             weights=weights,
             use_image=use_image,
         )
+
+        if self.reranker and results:
+            results = await self.reranker.rerank(
+                query=query["text"],
+                chunks=results,
+                top_k=top_k,
+            )
 
         # Normalize scores
         # results = normalize_scores(results)
