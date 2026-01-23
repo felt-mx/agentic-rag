@@ -56,7 +56,6 @@ class LateChunker(BaseChunker):
         embeddings = await self.embedder.late_chunking_embed(
             text=text,
             chunk_spans=chunk_spans,
-            task="retrieval.passage",
         )
 
         chunks = []
@@ -146,11 +145,29 @@ class LateChunker(BaseChunker):
                 current_words += line_words
 
             # Handle the "Massive Line" case:
-            # If a single line is STILL over the limit, force-split it by character
+            # If a single line is STILL over the limit, force-split it by sentences/words
             if current_words > self.chunk_size and len(current_chunk_lines) == 1:
-                # Simple character-based split for brevity here
-                # In production, use a more sophisticated sentence-breaker
-                pass
+                massive_line = current_chunk_lines[0]
+                sub_texts, sub_spans = self.split_massive_line(
+                    massive_line, current_start
+                )
+
+                # Add all but the last sub-chunk to results
+                for j, (sub_text, sub_span) in enumerate(
+                    zip(sub_texts[:-1], sub_spans[:-1])
+                ):
+                    chunk_texts.append(sub_text)
+                    chunk_spans.append(sub_span)
+
+                # Keep the last sub-chunk as the current chunk for potential overlap
+                if sub_texts:
+                    current_chunk_lines = [sub_texts[-1]]
+                    current_start = sub_spans[-1][0]
+                    current_words = len(sub_texts[-1].split())
+                else:
+                    current_chunk_lines = []
+                    current_start = -1
+                    current_words = 0
 
         # Add the final leftover chunk
         if current_chunk_lines:
@@ -158,6 +175,68 @@ class LateChunker(BaseChunker):
             chunk_spans.append((current_start, len(text)))
 
         return chunk_texts, chunk_spans
+
+    def split_massive_line(
+        self, line: str, base_offset: int
+    ) -> Tuple[List[str], List[Tuple[int, int]]]:
+        texts = []
+        spans = []
+
+        # First, try to split by sentences
+        sentence_pattern = re.compile(r"([^.!?]*[.!?]+(?:\s|$))")
+        sentences = sentence_pattern.findall(line)
+
+        if not sentences or len(sentences) == 1:
+            # No sentence boundaries found, try splitting by clauses (commas, semicolons)
+            clause_pattern = re.compile(r"([^,;]*[,;]?\s*)")
+            sentences = [s for s in clause_pattern.findall(line) if s.strip()]
+
+        if not sentences:
+            # Last resort: split by words
+            sentences = self.split_by_words(line, self.chunk_size)
+
+        current_text = ""
+        current_start = base_offset
+
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+
+            potential_text = (
+                (current_text + " " + sentence).strip() if current_text else sentence
+            )
+
+            if len(potential_text.split()) > self.chunk_size and current_text:
+                # Save current chunk
+                texts.append(current_text)
+                end_pos = base_offset + line.find(current_text) + len(current_text)
+                spans.append((current_start, end_pos))
+
+                # Start new chunk
+                current_text = sentence
+                current_start = base_offset + line.find(sentence, end_pos - base_offset)
+                if current_start < base_offset:
+                    current_start = end_pos
+            else:
+                current_text = potential_text
+
+        # Add remaining text
+        if current_text:
+            texts.append(current_text)
+            spans.append((current_start, base_offset + len(line)))
+
+        return texts, spans
+
+    def split_by_words(self, text: str, max_words: int) -> List[str]:
+        words = text.split()
+        chunks = []
+
+        for i in range(0, len(words), max_words):
+            chunk = " ".join(words[i : i + max_words])
+            chunks.append(chunk)
+
+        return chunks
 
     def extract_paragraphs(self, text: str) -> List[str]:
         paragraphs = re.split(r"\n\s*\n", text)
