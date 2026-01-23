@@ -9,8 +9,11 @@ from .base import BaseChunker
 
 
 class LateChunker(BaseChunker):
-    def __init__(self, chunk_size: int = 512, min_chunk_size: int = 100):
+    def __init__(
+        self, chunk_size: int = 256, overlap: int = 50, min_chunk_size: int = 50
+    ):
         self.chunk_size = chunk_size
+        self.overlap = overlap
         self.min_chunk_size = min_chunk_size
         self.embedder = VLLMClient()
 
@@ -83,37 +86,68 @@ class LateChunker(BaseChunker):
         chunk_texts = []
         chunk_spans = []
 
+        # Store line info: (text, start, end, word_count)
+        line_info = []
+        for match in lines:
+            line_text = match.group(0)
+            line_info.append(
+                (line_text, match.start(), match.end(), len(line_text.split()))
+            )
+
+        if not line_info:
+            return chunk_texts, chunk_spans
+
         current_chunk_lines = []
         current_start = -1
         current_words = 0
+        chunk_start_line_idx = 0
 
-        for i, match in enumerate(lines):
-            line_text = match.group(0)
-            line_start = match.start()
-            line_end = match.end()
-
+        for i, (line_text, line_start, line_end, line_words) in enumerate(line_info):
             if current_start == -1:
                 current_start = line_start
-
-            line_words = len(line_text.split())
+                chunk_start_line_idx = i
 
             # Check if adding this line exceeds the limit
             if current_words + line_words > self.chunk_size and current_chunk_lines:
                 # Save the current chunk
                 chunk_texts.append("\n".join(current_chunk_lines))
-                chunk_spans.append((current_start, lines[i - 1].end()))
+                chunk_spans.append(
+                    (current_start, line_info[i - 1][2])
+                )  # end of previous line
 
-                # Reset
-                current_chunk_lines = [line_text]
-                current_start = line_start
-                current_words = line_words
+                # Calculate overlap: find lines from the end that fit within overlap word count
+                overlap_lines = []
+                overlap_words = 0
+                overlap_start_idx = i  # Default to current line (no overlap)
+
+                # Walk backwards from the end of the current chunk to collect overlap lines
+                for j in range(len(current_chunk_lines) - 1, -1, -1):
+                    line_word_count = line_info[chunk_start_line_idx + j][3]
+                    if overlap_words + line_word_count <= self.overlap:
+                        overlap_lines.insert(0, current_chunk_lines[j])
+                        overlap_words += line_word_count
+                        overlap_start_idx = chunk_start_line_idx + j
+                    else:
+                        break
+
+                # Start new chunk with overlap lines plus current line
+                if overlap_lines and self.overlap > 0:
+                    current_chunk_lines = overlap_lines + [line_text]
+                    current_start = line_info[overlap_start_idx][1]
+                    current_words = overlap_words + line_words
+                    chunk_start_line_idx = overlap_start_idx
+                else:
+                    current_chunk_lines = [line_text]
+                    current_start = line_start
+                    current_words = line_words
+                    chunk_start_line_idx = i
             else:
                 current_chunk_lines.append(line_text)
                 current_words += line_words
 
             # Handle the "Massive Line" case:
             # If a single line is STILL over the limit, force-split it by character
-            if current_words > self.chunk_size:
+            if current_words > self.chunk_size and len(current_chunk_lines) == 1:
                 # Simple character-based split for brevity here
                 # In production, use a more sophisticated sentence-breaker
                 pass
