@@ -36,7 +36,7 @@ def get_retry_prompt(user_text: list[str]) -> str:
         The previous reformulated queries were:
         {', '.join(user_text[1:])}
 
-        You are an Marriott hotel's helpdesk designed to answer user's questions. Reformat the user's question accordingly.
+        You are an Marriott hotel's helpdesk designed to answer user's questions. Try to ask in a different way than the previous reformulated queries.
         Return the reformulated query only, without any additional text.
         """
 
@@ -50,16 +50,20 @@ def get_relevance_check_prompt(user_query: str, retrieved_results: list) -> str:
         Retrieved Results:
         {retrieved_results}
         
-        Your task is to determine if the retrieved results contain sufficient information to answer the user's query.
+        Your task is to determine if the retrieved results are CLEARLY OFF-TOPIC or COMPLETELY UNRELATED to the user's query.
         
-        Analyze whether:
-        1. The retrieved content is relevant to the user's question
-        2. The content contains enough information to provide a satisfactory answer
-        3. The content is not off-topic or unrelated
+        IMPORTANT: Be conservative. Only mark as INSUFFICIENT if the results are OBVIOUSLY wrong or unrelated.
+        If there is ANY possibility the results could help answer the query, mark as SUFFICIENT.
+        
+        Criteria for INSUFFICIENT:
+        1. The content is clearly about a completely different topic
+        2. There is no useful information whatsoever for the query
+        3. A human would immediately see this is the wrong information
         
         Respond with ONLY one word:
-        - "SUFFICIENT" if the results can adequately answer the query
-        - "INSUFFICIENT" if the results are irrelevant or lack necessary information
+        - "SUFFICIENT" if results have ANY relevance or useful information (default to this)
+        - "INSUFFICIENT" only if results are CLEARLY and OBVIOUSLY wrong
         
+        When in doubt, respond SUFFICIENT.
         Do not provide any explanation, just the single word verdict.
         """
