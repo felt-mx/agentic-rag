@@ -2,7 +2,11 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from core.models.generator import VLLMClient
 from retrieval.pipeline import RetrievalPipeline
-from retrieval.answer.prompt_builder import build_prompt, build_reformulation_prompt, build_retry_prompt
+from retrieval.answer.prompt_builder import (
+    build_prompt,
+    build_reformulation_prompt,
+    build_retry_prompt,
+)
 
 chat_router = APIRouter(prefix="/chat")
 
@@ -24,7 +28,11 @@ async def chat(request: ChatRequest):
             reformulation_prompt, tools=None, tool_choice=None
         )
 
-        reformulated_text = reformulated_response.message.content.strip()
+        input_texts = [request.text]
+
+        print(reformulated_response)
+
+        reformulated_text = reformulated_response.get("content", "").strip()
 
         results = await retrieval_pipeline.retrieve(
             reformulated_text,
@@ -36,17 +44,17 @@ async def chat(request: ChatRequest):
         while True:
             if not results and count < 3:
                 top_result = None
-                answer = "No relevant information found."
                 count += 1
 
                 input_texts.append(reformulated_text)
-                retry_prompt = build_retry_prompt(
-                    reformulated_text)
+                retry_prompt = build_retry_prompt(input_texts)
 
                 reformulated_response = await vllm_client.generate(
                     retry_prompt, tools=None, tool_choice=None
                 )
-                reformulated_text = reformulated_response.message.content.strip()
+                reformulated_text = reformulated_response.get("content", "").strip()
+
+                print(reformulated_text)
                 results = await retrieval_pipeline.retrieve(
                     reformulated_text,
                     top_k=5,  # Default 5 if not specified
@@ -54,11 +62,14 @@ async def chat(request: ChatRequest):
                     rerank_method="weighted",  # Default "weighted" if not specified
                 )
             else:  # Either results found or max retries reached
-                top_result = results[0]  # Get the top result (highest score)
-                answer = top_result["answer"]
                 break
 
-        prompt = build_prompt(answer, request.text, None)
+        if not results:
+            results = "No relevant information found."
+        else:
+            top_result = results[0]
+
+        prompt = build_prompt(results, request.text, None)
 
         response = await vllm_client.generate(prompt, tools=None, tool_choice=None)
 

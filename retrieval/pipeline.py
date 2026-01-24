@@ -23,7 +23,7 @@ class RetrievalPipeline:
         rerank_method: str = "weighted",
         image_query: Optional[np.ndarray] = None,
         use_image: bool = False,
-        score_threshold: float = 0.15,
+        score_threshold: float = 0.25,
     ):
         query = intake_query(raw_query)
 
@@ -60,8 +60,6 @@ class RetrievalPipeline:
             use_image=use_image,
         )
 
-        print("Retrieved results before reranking:", results)
-
         if self.reranker and results:
             results = await self.reranker.rerank(
                 query=query["text"],
@@ -85,6 +83,7 @@ class RetrievalPipeline:
             }
             for r in results_filtered
         ]
+
         return formatted_results
 
     async def generate_dense_embedding(self, query_text: str) -> np.ndarray:
