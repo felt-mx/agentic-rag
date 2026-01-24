@@ -1,4 +1,9 @@
-from retrieval.answer.system_prompt import get_retry_prompt, get_system_prompt, get_reformatted_prompt
+from retrieval.answer.system_prompt import (
+    get_retry_prompt,
+    get_system_prompt,
+    get_reformatted_prompt,
+    get_relevance_check_prompt,
+)
 
 
 def build_prompt(answer_context, user_text, images=None):
@@ -26,5 +31,14 @@ def build_retry_prompt(user_text: list[str]) -> str:
 
     retry_content = get_retry_prompt(user_text)
     prompt.append({"role": "system", "content": retry_content})
+
+    return prompt
+
+
+def build_relevance_check_prompt(user_query: str, retrieved_results: list) -> list:
+    prompt = []
+
+    relevance_content = get_relevance_check_prompt(user_query, retrieved_results)
+    prompt.append({"role": "system", "content": relevance_content})
 
     return prompt

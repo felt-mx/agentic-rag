@@ -6,6 +6,7 @@ from retrieval.answer.prompt_builder import (
     build_prompt,
     build_reformulation_prompt,
     build_retry_prompt,
+    build_relevance_check_prompt,
 )
 
 chat_router = APIRouter(prefix="/chat")
@@ -42,6 +43,7 @@ async def chat(request: ChatRequest):
         )
 
         while True:
+            # First check: Are there any results?
             if not results and count < 3:
                 top_result = None
                 count += 1
@@ -54,14 +56,47 @@ async def chat(request: ChatRequest):
                 )
                 reformulated_text = reformulated_response.get("content", "").strip()
 
-                print(reformulated_text)
+                print(f"Retry {count}: {reformulated_text}")
                 results = await retrieval_pipeline.retrieve(
                     reformulated_text,
                     top_k=5,  # Default 5 if not specified
                     retrieval_k=20,  # Default 20 if not specified
                     rerank_method="weighted",  # Default "weighted" if not specified
                 )
-            else:  # Either results found or max retries reached
+            elif results and count < 3:
+                # Second check: Are the results actually relevant and sufficient?
+                relevance_prompt = build_relevance_check_prompt(
+                    request.text, results
+                )
+                relevance_response = await vllm_client.generate(
+                    relevance_prompt, tools=None, tool_choice=None
+                )
+                relevance_verdict = relevance_response.get("content", "").strip().upper()
+                
+                print(f"Relevance check: {relevance_verdict}")
+                
+                if "INSUFFICIENT" in relevance_verdict:
+                    # Results exist but are not relevant enough, retry with reformulation
+                    count += 1
+                    input_texts.append(reformulated_text)
+                    retry_prompt = build_retry_prompt(input_texts)
+
+                    reformulated_response = await vllm_client.generate(
+                        retry_prompt, tools=None, tool_choice=None
+                    )
+                    reformulated_text = reformulated_response.get("content", "").strip()
+
+                    print(f"Retry {count} (insufficient results): {reformulated_text}")
+                    results = await retrieval_pipeline.retrieve(
+                        reformulated_text,
+                        top_k=5,  # Default 5 if not specified
+                        retrieval_k=20,  # Default 20 if not specified
+                        rerank_method="weighted",  # Default "weighted" if not specified
+                    )
+                else:
+                    # Results are sufficient, exit the loop
+                    break
+            else:  # Either max retries reached or results found and relevant
                 break
 
         if not results:

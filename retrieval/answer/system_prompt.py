@@ -39,3 +39,27 @@ def get_retry_prompt(user_text: list[str]) -> str:
         You are an Marriott hotel's helpdesk designed to answer user's questions. Reformat the user's question accordingly.
         Return the reformulated query only, without any additional text.
         """
+
+
+def get_relevance_check_prompt(user_query: str, retrieved_results: list) -> str:
+    return f"""
+        You are a relevance judge for a Marriott hotel's helpdesk RAG system.
+        
+        User's Original Query: {user_query}
+        
+        Retrieved Results:
+        {retrieved_results}
+        
+        Your task is to determine if the retrieved results contain sufficient information to answer the user's query.
+        
+        Analyze whether:
+        1. The retrieved content is relevant to the user's question
+        2. The content contains enough information to provide a satisfactory answer
+        3. The content is not off-topic or unrelated
+        
+        Respond with ONLY one word:
+        - "SUFFICIENT" if the results can adequately answer the query
+        - "INSUFFICIENT" if the results are irrelevant or lack necessary information
+        
+        Do not provide any explanation, just the single word verdict.
+        """
