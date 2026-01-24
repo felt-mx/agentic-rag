@@ -65,16 +65,16 @@ async def chat(request: ChatRequest):
                 )
             elif results and count < 3:
                 # Second check: Are the results actually relevant and sufficient?
-                relevance_prompt = build_relevance_check_prompt(
-                    request.text, results
-                )
+                relevance_prompt = build_relevance_check_prompt(request.text, results)
                 relevance_response = await vllm_client.generate(
                     relevance_prompt, tools=None, tool_choice=None
                 )
-                relevance_verdict = relevance_response.get("content", "").strip().upper()
-                
+                relevance_verdict = (
+                    relevance_response.get("content", "").strip().upper()
+                )
+
                 print(f"Relevance check: {relevance_verdict}")
-                
+
                 if "INSUFFICIENT" in relevance_verdict:
                     # Results exist but are not relevant enough, retry with reformulation
                     count += 1
@@ -108,6 +108,20 @@ async def chat(request: ChatRequest):
 
         response = await vllm_client.generate(prompt, tools=None, tool_choice=None)
 
+        # Build list of scores and metadata from all results
+        scores_and_metadata = []
+        if results and isinstance(results, list):
+            for result in results:
+                scores_and_metadata.append(
+                    {
+                        "score": result.get("score"),
+                        "metadata": {
+                            "source": result.get("metadata", {}).get("file_name"),
+                            "page": result.get("metadata", {}).get("section_title"),
+                        },
+                    }
+                )
+
         return {
             "data": {
                 "message": response,
@@ -120,6 +134,7 @@ async def chat(request: ChatRequest):
                         top_result["metadata"]["section_title"] if top_result else None
                     ),
                 },
+                "all_results": scores_and_metadata,
             }
         }
     except Exception as e:
