@@ -1,6 +1,11 @@
 import httpx
 import json
-from configs.config import VLLM_API_URL, VLLM_EMBED_API_PORT, VLLM_EMBED_MODEL_NAME
+from configs.config import (
+    VLLM_API_URL,
+    VLLM_EMBED_API_PORT,
+    VLLM_EMBED_MODEL_NAME,
+    CUSTOM_JINA_API_PORT,
+)
 
 
 class VLLMClient:
@@ -70,34 +75,42 @@ class VLLMClient:
     async def late_chunking_embed(
         self,
         text: str,
-        chunk_spans: list[tuple[int, int]],
         task: str = "retrieval.passage",
+        late_chunking: bool = False,
+        batch_size: int = 4096,
     ) -> list[list[float]]:
+        # Use custom late chunking server
+        custom_server_url = (
+            f"http://{VLLM_API_URL}:{CUSTOM_JINA_API_PORT}/api/v1/server/embed"
+        )
+
         payload = {
-            "model": self.model_name,
-            "input": text,
+            "text": text,  # Send single text string
             "task": task,
-            "late_chunking": True,
-            "spans": chunk_spans,
+            "late_chunking": late_chunking,
+            "batch_size": batch_size,  # Default batch size
         }
 
         async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.post(
-                f"{self.server_url}/v1/embeddings", json=payload
-            )
+            response = await client.post(custom_server_url, json=payload)
 
             if response.status_code != 200:
                 error_body = await response.aread()
-                raise Exception(f"VLLM API error: {error_body.decode()}")
+                raise Exception(
+                    f"Custom late chunking API error: {error_body.decode()}"
+                )
 
             response_json = response.json()
 
             if isinstance(response_json, dict):
-                if "data" in response_json:
-                    embeddings = sorted(
-                        response_json["data"], key=lambda x: x.get("index", 0)
-                    )
-                    return [item["embedding"] for item in embeddings]
+                if "embeddings" in response_json and "chunks" in response_json:
+                    # Return list of dicts with text and embedding
+                    return [
+                        {"text": chunk, "embedding": embedding}
+                        for chunk, embedding in zip(
+                            response_json["chunks"], response_json["embeddings"]
+                        )
+                    ]
                 else:
                     raise Exception(f"Unexpected response format: {response_json}")
             else:

@@ -48,30 +48,28 @@ class LateChunker(BaseChunker):
         metadata: dict,
         section_title: str,
     ) -> List[Chunk]:
-        chunk_texts, chunk_spans = self.split_with_spans(text)
-
-        if not chunk_texts:
+        if not text.strip():
             return []
 
-        embeddings = await self.embedder.late_chunking_embed(
-            text=text,
-            chunk_spans=chunk_spans,
+        # Pass text directly to API - API handles chunking and embedding
+        chunk_results = await self.embedder.late_chunking_embed(
+            text=text, task="retrieval.passage", late_chunking=True, batch_size=4096
         )
 
         chunks = []
-        for chunk_text, embedding in zip(chunk_texts, embeddings):
+        for result in chunk_results:
             chunk = Chunk(
                 chunk_id=str(uuid.uuid4()),
                 document_id=document_id,
                 section_id=section_id,
-                text=chunk_text,
+                text=result["text"],
                 metadata={
                     **metadata,
                     "section_title": section_title,
                     "chunking_method": "late_chunking",
                     "has_full_content": True,
                 },
-                dense_embedding=np.array(embedding),
+                dense_embedding=np.array(result["embedding"]),
                 image_embedding=None,
             )
             chunks.append(chunk)

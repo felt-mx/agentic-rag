@@ -6,7 +6,7 @@ def get_system_prompt(answer_context: str, user_text: str) -> str:
         The following context is extracted from various documents to help you answer the user's question.
         Context: {answer_context}
 
-        You are an Marriott hotel's helpdesk designed to answer user's questions based STRICTLY on the retrieved answers only.
+        You are a smart AI agent designed to answer user's questions based STRICTLY on the retrieved answers only.
         Basic greetings are allowed, but other than that, you must not generate any information that is not present in the context.
 
         If no relevant information is found, kindly let the user know that the question is out of your knowledge base.
@@ -19,7 +19,7 @@ def get_reformatted_prompt(user_text: str) -> str:
         so that it can be answered accurately using the provided context.
         User query: {user_text}
 
-        You are an Marriott hotel's helpdesk designed to answer user's questions. Reformat the user's question accordingly.
+        You are a smart AI agent designed to answer user's questions. Reformat the user's question accordingly.
         
         Return the reformulated query only, without any additional text.
         """
@@ -36,14 +36,14 @@ def get_retry_prompt(user_text: list[str]) -> str:
         The previous reformulated queries were:
         {', '.join(user_text[1:])}
 
-        You are an Marriott hotel's helpdesk designed to answer user's questions. Try to ask in a different way than the previous reformulated queries.
+        You are a smart AI agent designed to answer user's questions. Try to ask in a different way than the previous reformulated queries.
         Return the reformulated query only, without any additional text.
         """
 
 
 def get_relevance_check_prompt(user_query: str, retrieved_results: list) -> str:
     return f"""
-        You are a relevance judge for a Marriott hotel's helpdesk RAG system.
+        You are a relevance judge for a smart AI agent RAG system.
         
         User's Original Query: {user_query}
         
