@@ -25,20 +25,12 @@ from ingestion.pipeline import IngestionPipeline
 async def main():
     parser = argparse.ArgumentParser(description="Ingest documents into the RAG system")
     parser.add_argument("path", help="File or directory to ingest")
-    parser.add_argument(
-        "--chunk-size", type=int, default=512, help="Chunk size in words"
-    )
-    parser.add_argument(
-        "--min-chunk-size", type=int, default=100, help="Minimum chunk size"
-    )
 
     args = parser.parse_args()
 
     connect_milvus()
 
-    pipeline = IngestionPipeline(
-        chunk_size=args.chunk_size, min_chunk_size=args.min_chunk_size
-    )
+    pipeline = IngestionPipeline()
 
     path = Path(args.path)
 

@@ -5,7 +5,9 @@ from infra.milvus.connection import connect_milvus
 from infra.milvus.schema import create_chunk_collection
 
 
-def upsert_chunks(chunks: List[Chunk], collection_name: str = "chunks"):
+def upsert_chunks(
+    chunks: List[Chunk], collection_name: str = "chunks", batch_size: int = 100
+):
     if not chunks:
         print("No chunks to upsert")
         return
@@ -13,31 +15,43 @@ def upsert_chunks(chunks: List[Chunk], collection_name: str = "chunks"):
     connect_milvus()
     collection: Collection = create_chunk_collection(collection_name)
 
-    data = []
-    for chunk in chunks:
-        entity = {
-            "chunk_id": chunk.chunk_id,
-            "document_id": chunk.document_id,
-            "section_id": chunk.section_id,
-            "text": chunk.text,
-            "metadata": chunk.metadata,
-            "dense_embedding": chunk.dense_embedding.tolist(),
-        }
+    total_chunks = len(chunks)
+    total_upserted = 0
 
-        # Add image embedding if present
-        if chunk.image_embedding is not None:
-            entity["image_embedding"] = chunk.image_embedding.tolist()
-        else:
-            # Provide a zero vector if no image
-            entity["image_embedding"] = [0.0] * 1024
+    # Process chunks in batches to avoid gRPC message size limits
+    for i in range(0, total_chunks, batch_size):
+        batch = chunks[i : i + batch_size]
+        data = []
 
-        data.append(entity)
+        for chunk in batch:
+            entity = {
+                "chunk_id": chunk.chunk_id,
+                "document_id": chunk.document_id,
+                "section_id": chunk.section_id,
+                "text": chunk.text,
+                "metadata": chunk.metadata,
+                "dense_embedding": chunk.dense_embedding.tolist(),
+            }
 
-    collection.upsert(data)
+            # Add image embedding if present
+            if chunk.image_embedding is not None:
+                entity["image_embedding"] = chunk.image_embedding.tolist()
+            else:
+                # Provide a zero vector if no image
+                entity["image_embedding"] = [0.0] * 1024
+
+            data.append(entity)
+
+        collection.upsert(data)
+        total_upserted += len(batch)
+        print(
+            f"Upserted batch {i // batch_size + 1}/{(total_chunks + batch_size - 1) // batch_size} ({total_upserted}/{total_chunks} chunks)"
+        )
+
     collection.flush()
 
     print(
-        f"Successfully upserted {len(chunks)} chunks into collection '{collection_name}'"
+        f"Successfully upserted {total_chunks} chunks into collection '{collection_name}'"
     )
 
 
