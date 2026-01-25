@@ -53,7 +53,7 @@ class LateChunker(BaseChunker):
 
         # Pass text directly to API - API handles chunking and embedding
         chunk_results = await self.embedder.late_chunking_embed(
-            text=text, task="retrieval.passage", late_chunking=True, batch_size=4096
+            text=text, task="retrieval.passage", late_chunking=True, batch_size=10000
         )
 
         chunks = []
