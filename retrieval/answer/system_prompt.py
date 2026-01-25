@@ -69,3 +69,26 @@ def get_relevance_check_prompt(user_query: str, retrieved_results: list) -> str:
         When in doubt, respond SUFFICIENT.
         Do not provide any explanation, just the single word verdict.
         """
+
+
+def get_image_description_prompt() -> str:
+    return """
+        You are an expert image analysis assistant. Analyze the provided image in detail and provide a comprehensive description.
+        
+        Your description can include things like but is not limited to:
+        1. **Shapes and Objects**: Identify all visible shapes, objects, diagrams, charts, or visual elements
+        2. **Colors**: Describe the color scheme, prominent colors, and any color-coding used
+        3. **Measurements and Dimensions**: Note any measurements, dimensions, scales, or numerical values visible
+        4. **Text Content**: Extract and transcribe ALL visible text, including:
+           - Titles and headings
+           - Labels and annotations
+           - Data values and numbers
+           - Captions and legends
+           - Any other textual information
+        5. **Layout and Structure**: Describe the spatial arrangement and organization of elements
+        6. **Context and Purpose**: Infer what the image represents (e.g., diagram, chart, table, photograph)
+
+        You must format the answer into a single paragraph format. Please ensure the description includes ALL details. Never leave out any information.
+        Be thorough and precise. This description will be used to make the image content searchable in a document retrieval system.
+        Provide your response in a clear, structured paragraph format.
+        """

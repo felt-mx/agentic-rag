@@ -19,7 +19,7 @@ class IngestionPipeline:
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        document = self.parser_registry.parse(file_path)
+        document = await self.parser_registry.parse(file_path)
         chunks = await self.chunker.chunk_document(document)
         upsert_chunks(chunks)
 
