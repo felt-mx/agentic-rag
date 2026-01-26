@@ -14,12 +14,18 @@ class PDFParser(BaseParser):
     def supports(self, file_path: Path) -> bool:
         return file_path.suffix.lower() == ".pdf"
 
-    async def parse(self, file_path: Path, next_page_lines: int = 30) -> Document:
+    async def parse(self, file_path: Path, next_page_lines: int = 20) -> Document:
         sections = []
         vllm_client = VLLMClient()
 
         pdf_document = fitz.open(file_path)
         total_pages = len(pdf_document)
+
+        # Normalize and map keys used across the pipeline
+        doc_meta = {
+            "source": str(file_path),
+            "file_name": file_path.name,
+        }
 
         processed_xrefs = set()
         xref_descriptions = {}
@@ -122,10 +128,11 @@ class PDFParser(BaseParser):
                 )
 
         pdf_document.close()
+        # Ensure the document metadata reflects actual PDF metadata collected
         return Document(
             document_id=str(uuid.uuid4()),
+            metadata={**doc_meta, "total_pages": len(sections)},
             sections=sections,
-            metadata={"source": str(file_path), "total_pages": len(sections)},
         )
 
     async def _get_vllm_description(self, client, image_data: str) -> str:
