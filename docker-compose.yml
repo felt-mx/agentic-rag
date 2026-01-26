@@ -1,0 +1,19 @@
+services:
+  agentic-rag:
+    container_name: agentic-rag
+    build: .
+    ports:
+      - "19008:8000"
+    environment:
+      - MILVUS_HOST=192.168.250.142
+      - MILVUS_PORT=19530
+      - VLLM_API_URL=192.168.250.142
+      - VLLM_EMBED_API_PORT=9005
+      - VLLM_EMBED_MODEL_NAME=jinaai/jina-embeddings-v3
+      - VLLM_RERANK_API_PORT=9006
+      - VLLM_RERANK_MODEL_NAME=jinaai/jina-reranker-v2-base-multilingual
+      - VLLM_GEN_API_PORT=9002
+      - VLLM_GEN_MODEL_NAME=nvidia/Llama-4-Scout-17B-16E-Instruct-NVFP4
+      - CUSTOM_JINA_API_PORT=9007
+    volumes:
+      - ~/docker-files/agentic-rag/documents:/documents
