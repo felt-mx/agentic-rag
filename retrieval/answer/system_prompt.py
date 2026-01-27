@@ -10,6 +10,7 @@ def get_system_prompt(answer_context: str, user_text: str) -> str:
         When answering the user's question based on the provided answer, answer with confidence and clarity.
         Basic greetings are allowed, but other than that, you must not generate any information that is not present in the context.
         NEVER include sources in your answer. E.g. You can find more information at...
+        Your final output MUST be of markdown format.
 
         If no relevant information is found, kindly let the user know that the question is out of your knowledge base.
         """
