@@ -57,6 +57,7 @@ async def chat(request: ChatRequest):
                 reformulated_text = reformulated_response.get("content", "").strip()
 
                 print(f"Retry {count}: {reformulated_text}")
+
                 results = await retrieval_pipeline.retrieve(
                     reformulated_text,
                     top_k=5,  # Default 5 if not specified
@@ -87,6 +88,7 @@ async def chat(request: ChatRequest):
                     reformulated_text = reformulated_response.get("content", "").strip()
 
                     print(f"Retry {count} (insufficient results): {reformulated_text}")
+
                     results = await retrieval_pipeline.retrieve(
                         reformulated_text,
                         top_k=5,  # Default 5 if not specified
@@ -101,11 +103,13 @@ async def chat(request: ChatRequest):
 
         if not results:
             results = "No relevant information found."
+            top_result = None
         else:
             top_result = results[0]
 
         prompt = build_prompt(results, request.text, None)
 
+        # Pure HTTP response - no streaming
         response = await vllm_client.generate(prompt, tools=None, tool_choice=None)
 
         # Build list of scores and metadata from all results
@@ -137,5 +141,6 @@ async def chat(request: ChatRequest):
                 "all_results": scores_and_metadata,
             }
         }
+
     except Exception as e:
         return {"error": str(e)}

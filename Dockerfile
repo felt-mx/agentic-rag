@@ -53,5 +53,5 @@ USER appuser
 EXPOSE 8000
 
 # Run application
-# Use Gunicorn with Uvicorn workers to serve the FastAPI app defined in `api.app`
-CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "api.app:agentic_rag_app", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120"]
+# Use Gunicorn with Uvicorn workers to serve the FastAPI + Socket.IO app
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "api.app:app", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120"]
