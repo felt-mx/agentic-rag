@@ -8,8 +8,13 @@ from core.models.embedder import VLLMClient
 
 
 class RetrievalPipeline:
-    def __init__(self, dense_weight: float = 0.7, sparse_weight: float = 0.3):
-        self.retriever = HybridRetriever()
+    def __init__(
+        self,
+        dense_weight: float = 0.7,
+        sparse_weight: float = 0.3,
+        database: str = None,
+    ):
+        self.retriever = HybridRetriever(database=database)
         self.dense_weight = dense_weight
         self.sparse_weight = sparse_weight
         self.reranker = CrossEncoderReranker()

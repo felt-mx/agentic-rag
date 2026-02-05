@@ -6,14 +6,17 @@ from infra.milvus.schema import create_chunk_collection
 
 
 def upsert_chunks(
-    chunks: List[Chunk], collection_name: str = "chunks", batch_size: int = 100
+    chunks: List[Chunk],
+    collection_name: str = "chunks",
+    batch_size: int = 100,
+    database: str = None,
 ):
     if not chunks:
         print("No chunks to upsert")
         return
 
-    connect_milvus()
-    collection: Collection = create_chunk_collection(collection_name)
+    connect_milvus(database=database)
+    collection: Collection = create_chunk_collection(collection_name, database=database)
 
     total_chunks = len(chunks)
     total_upserted = 0
@@ -55,9 +58,11 @@ def upsert_chunks(
     )
 
 
-def delete_chunks(chunk_ids: List[str], collection_name: str = "chunks"):
-    connect_milvus()
-    collection: Collection = create_chunk_collection(collection_name)
+def delete_chunks(
+    chunk_ids: List[str], collection_name: str = "chunks", database: str = None
+):
+    connect_milvus(database=database)
+    collection: Collection = create_chunk_collection(collection_name, database=database)
 
     expr = f"chunk_id in {chunk_ids}"
     collection.delete(expr)
@@ -66,9 +71,9 @@ def delete_chunks(chunk_ids: List[str], collection_name: str = "chunks"):
     print(f"Deleted {len(chunk_ids)} chunks from collection '{collection_name}'")
 
 
-def get_collection_stats(collection_name: str = "chunks"):
-    connect_milvus()
-    collection: Collection = create_chunk_collection(collection_name)
+def get_collection_stats(collection_name: str = "chunks", database: str = None):
+    connect_milvus(database=database)
+    collection: Collection = create_chunk_collection(collection_name, database=database)
 
     stats = collection.num_entities
     print(f"Collection '{collection_name}' contains {stats} entities")

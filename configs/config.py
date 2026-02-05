@@ -5,6 +5,7 @@ load_dotenv()
 
 MILVUS_HOST = os.getenv("MILVUS_HOST", "MILVUS_HOST")
 MILVUS_PORT = int(os.getenv("MILVUS_PORT", "MILVUS_PORT"))
+MILVUS_DATABASE = os.getenv("MILVUS_DATABASE", None)
 
 VLLM_API_URL = os.getenv("VLLM_API_URL", "VLLM_API_URL")
 

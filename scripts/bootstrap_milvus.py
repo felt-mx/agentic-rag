@@ -9,17 +9,27 @@ from pymilvus import utility
 from infra.milvus.connection import connect_milvus
 from infra.milvus.schema import create_chunk_collection
 from infra.milvus.indexes import create_dense_index
+from configs.config import MILVUS_DATABASE
 
 
-def bootstrap_milvus():
-    connect_milvus()
+def bootstrap_milvus(database: str = None):
+    db_name = database or MILVUS_DATABASE
+
+    response = input(
+        f"Bootstrap Milvus database '{db_name}'? This will reset the database with new schemas. (y/n): "
+    )
+    if response.lower() != "y":
+        print("Bootstrap cancelled.")
+        return
+
+    connect_milvus(database=db_name)
 
     # Drop existing collection if it exists
     collection_name = "chunks"
-    if utility.has_collection(collection_name):
-        utility.drop_collection(collection_name)
+    if utility.has_collection(collection_name, using="default"):
+        utility.drop_collection(collection_name, using="default")
 
-    collection = create_chunk_collection()
+    collection = create_chunk_collection(database=db_name)
     create_dense_index(collection)
     collection.load()
 

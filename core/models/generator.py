@@ -43,8 +43,13 @@ class VLLMClient:
                     except json.JSONDecodeError as e:
                         continue
 
-    async def generate(self, messages, tools=None, tool_choice=None):
-        payload = {"model": VLLM_GEN_MODEL_NAME, "messages": messages, "stream": False}
+    async def generate(self, messages, tools=None, tool_choice=None, temperature=0.7):
+        payload = {
+            "model": VLLM_GEN_MODEL_NAME,
+            "messages": messages,
+            "stream": False,
+            "temperature": temperature,
+        }
         if tools:
             payload["tools"] = tools
         if tool_choice:

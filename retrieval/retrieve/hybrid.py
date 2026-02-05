@@ -7,9 +7,11 @@ from retrieval.models import ScoredChunk
 
 
 class HybridRetriever:
-    def __init__(self, collection_name: str = "chunks"):
-        if connect_milvus():
-            self.collection: Collection = create_chunk_collection(name=collection_name)
+    def __init__(self, collection_name: str = "chunks", database: str = None):
+        if connect_milvus(database=database):
+            self.collection: Collection = create_chunk_collection(
+                name=collection_name, database=database
+            )
             self.collection.load()
 
     def retrieve(

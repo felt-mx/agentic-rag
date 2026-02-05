@@ -8,25 +8,30 @@ from retrieval.answer.prompt_builder import (
     build_retry_prompt,
     build_relevance_check_prompt,
 )
+from configs.config import MILVUS_DATABASE
 
 chat_router = APIRouter(prefix="/chat")
 
 
 class ChatRequest(BaseModel):
     text: str
+    database: str = None
 
 
 @chat_router.post("")
 async def chat(request: ChatRequest):
     try:
-        retrieval_pipeline = RetrievalPipeline()
+        # Use specified database or fall back to config
+        database = request.database or MILVUS_DATABASE
+        retrieval_pipeline = RetrievalPipeline(database=database)
+
         vllm_client = VLLMClient()
         count = 0
         input_texts = []
 
         reformulation_prompt = build_reformulation_prompt(request.text)
         reformulated_response = await vllm_client.generate(
-            reformulation_prompt, tools=None, tool_choice=None
+            reformulation_prompt, tools=None, tool_choice=None, temperature=0.1
         )
 
         input_texts = [request.text]

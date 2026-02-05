@@ -5,10 +5,13 @@ from pymilvus import (
     Collection,
     Function,
     FunctionType,
+    utility,
 )
 
 
-def create_chunk_collection(name: str = "chunks", dim=1024) -> Collection:
+def create_chunk_collection(
+    name: str = "chunks", dim=1024, database: str = None
+) -> Collection:
     fields = [
         FieldSchema(
             name="chunk_id", dtype=DataType.VARCHAR, is_primary=True, max_length=64
@@ -34,6 +37,9 @@ def create_chunk_collection(name: str = "chunks", dim=1024) -> Collection:
     schema = CollectionSchema(
         fields, description="Chunk for RAG retrieval", functions=[bm25_function]
     )
-    collection = Collection(name=name, schema=schema)
 
+    if utility.has_collection(name, using="default"):
+        collection = Collection(name=name, using="default")
+    else:
+        collection = Collection(name=name, schema=schema, using="default")
     return collection

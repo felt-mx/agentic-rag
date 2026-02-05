@@ -20,6 +20,7 @@ import argparse
 from pathlib import Path
 from infra.milvus.connection import connect_milvus
 from ingestion.pipeline import IngestionPipeline
+from configs.config import MILVUS_DATABASE
 
 
 async def main():
@@ -28,9 +29,11 @@ async def main():
 
     args = parser.parse_args()
 
-    connect_milvus()
+    database = MILVUS_DATABASE
 
-    pipeline = IngestionPipeline()
+    connect_milvus(database=database)
+
+    pipeline = IngestionPipeline(database=database)
 
     path = Path(args.path)
 

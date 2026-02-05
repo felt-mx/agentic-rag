@@ -7,11 +7,10 @@ from infra.milvus.client import upsert_chunks
 
 
 class IngestionPipeline:
-    def __init__(
-        self,
-    ):
+    def __init__(self, database: str = None):
         self.parser_registry = ParserRegistry()
         self.chunker = LateChunker()
+        self.database = database
 
     async def ingest_file(self, file_path: Union[str, Path]) -> List[Chunk]:
         file_path = Path(file_path)
@@ -21,7 +20,7 @@ class IngestionPipeline:
 
         document = await self.parser_registry.parse(file_path)
         chunks = await self.chunker.chunk_document(document)
-        upsert_chunks(chunks)
+        upsert_chunks(chunks, database=self.database)
 
         return chunks
 

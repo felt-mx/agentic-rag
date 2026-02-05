@@ -43,7 +43,7 @@ async def chat_stream(sid, data):
         # Reformulate the query
         reformulation_prompt = build_reformulation_prompt(user_text)
         reformulated_response = await vllm_client.generate(
-            reformulation_prompt, tools=None, tool_choice=None
+            reformulation_prompt, tools=None, tool_choice=None, temperature=0.1
         )
 
         input_texts = [user_text]
