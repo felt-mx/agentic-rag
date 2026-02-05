@@ -4,6 +4,7 @@ from .base import BaseParser
 from .text_parser import TextParser
 from .pdf_parser import PDFParser
 from .docx_parser import DocxParser
+from .csv_parser import CSVParser
 
 
 class ParserRegistry:
@@ -24,6 +25,11 @@ class ParserRegistry:
 
         try:
             self.parsers.append(DocxParser())
+        except ImportError:
+            pass
+
+        try:
+            self.parsers.append(CSVParser())
         except ImportError:
             pass
 

@@ -15,5 +15,7 @@ dependencies = [
     "pymupdf>=1.26.7",
     "python-docx>=1.2.0",
     "python-socketio>=5.16.0",
+    "ragas>=0.4.3",
+    "rapidfuzz>=3.14.3",
     "uvicorn>=0.40.0",
 ]

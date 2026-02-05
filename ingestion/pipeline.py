@@ -31,7 +31,7 @@ class IngestionPipeline:
             raise NotADirectoryError(f"Directory not found: {dir_path}")
 
         all_chunks = []
-        supported_extensions = [".txt", ".pdf", ".docx", ".doc"]
+        supported_extensions = [".txt", ".pdf", ".docx", ".doc", ".csv"]
 
         files = [
             f
