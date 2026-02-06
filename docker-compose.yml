@@ -1,20 +1,20 @@
 services:
   agentic-rag:
-    container_name: agentic-rag
+    container_name: agentic-rag-eval
     build: .
     ports:
-      - "19008:8000"
+      - "19010:8000"
     environment:
-      - MILVUS_HOST=YOUR_MILVUS_HOST
-      - MILVUS_PORT=YOUR_MILVUS_PORT
-      - MILVUS_DATABASE=YOUR_MILVUS_DATABASE
-      - VLLM_API_URL=YOUR_VLLM_API_URL
-      - VLLM_EMBED_API_PORT=YOUR_VLLM_EMBED_API_PORT
-      - VLLM_EMBED_MODEL_NAME=YOUR_VLLM_EMBED_MODEL_NAME
-      - VLLM_RERANK_API_PORT=YOUR_VLLM_RERANK_API_PORT
-      - VLLM_RERANK_MODEL_NAME=YOUR_VLLM_RERANK_MODEL_NAME
-      - VLLM_GEN_API_PORT=YOUR_VLLM_GENERATION_API_PORT
-      - VLLM_GEN_MODEL_NAME=YOUR_VLLM_GENERATION_MODEL_NAME
-      - CUSTOM_JINA_API_PORT=YOUR_CUSTOM_JINA_API_PORT
+      - MILVUS_HOST=192.168.250.142
+      - MILVUS_PORT=19530
+      - MILVUS_DATABASE=eval
+      - VLLM_API_URL=192.168.250.142
+      - VLLM_EMBED_API_PORT=9005
+      - VLLM_EMBED_MODEL_NAME=jinaai/jina-embeddings-v3
+      - VLLM_RERANK_API_PORT=9008
+      - VLLM_RERANK_MODEL_NAME=BAAI/bge-reranker-v2-m3
+      - VLLM_GEN_API_PORT=9002
+      - VLLM_GEN_MODEL_NAME=nvidia/Llama-4-Scout-17B-16E-Instruct-NVFP4
+      - CUSTOM_JINA_API_PORT=9007
     volumes:
       - ./documents:/app/documents
