@@ -96,6 +96,11 @@ def calculate_confusion_matrix(file_path):
     # Avoid division by zero
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    f1_score = (
+        2 * (precision * recall) / (precision + recall)
+        if (precision + recall) > 0
+        else 0
+    )
 
     print("\n" + "=" * 30)
     print("CONFUSION MATRIX RESULTS")
@@ -109,6 +114,7 @@ def calculate_confusion_matrix(file_path):
     print(f"Accuracy:  {accuracy:.2%}")
     print(f"Precision: {precision:.2%} (Trustworthiness of answers provided)")
     print(f"Recall:    {recall:.2%} (Ability to find answers that exist)")
+    print(f"F1 Score:  {f1_score:.2%} (Harmonic mean of Precision and Recall)")
     print("=" * 30)
 
     # Show failures
