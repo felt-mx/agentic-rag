@@ -12,14 +12,14 @@ from retrieval.pipeline import RetrievalPipeline
 async def main():
     retrieval_pipeline = RetrievalPipeline()
     results = await retrieval_pipeline.retrieve(
-        "types of swimming pool in marriott hotels",
+        "who is beyonce?",
         top_k=10,
         retrieval_k=20,
         rerank_method="weighted",
     )
 
     print(
-        f"Retrieved {len(results)} results for the query: 'types of swimming pool in marriott hotels'"
+        f"Retrieved {len(results)} results for the query: 'what was a popular club in ibiza that started playing dance and house music?'"
     )
 
     print("Top results:")

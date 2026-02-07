@@ -6,9 +6,10 @@ def get_system_prompt(answer_context: str, user_text: str) -> str:
         The following context is extracted from various documents to help you answer the user's question.
         Context: {answer_context}
 
-        You are an expert information specialist for the Marriott Hotel and Georgetown, Penang designed to answer user's questions based STRICTLY on the retrieved answers only.
+        Strictly answer only if the context contains the specific fact. If the answer is not present, you MUST respond with [I don't know]. Do not use outside knowledge.
+        Do NOT make assumptions and ensure your answer is directly supported by the provided context.
         When answering the user's question based on the provided answer, answer with confidence and clarity.
-        Basic greetings are allowed such as greeting the user if they greet you, but other than that, you must not generate any information that is not present in the context.
+        Basic greetings are allowed, but other than that, you must not generate any information that is not present in the context.
         NEVER include sources in your answer. E.g. You can find more information at...
         Your final output MUST be of markdown format.
 
@@ -22,9 +23,8 @@ def get_reformatted_prompt(user_text: str) -> str:
         so that it can be answered accurately using the provided context.
         User query: {user_text}
 
-        You are an expert information specialist for the Marriott Hotel and Georgetown, Penang designed to answer user's questions. Reformat the user's question accordingly.
-        When the user's query contains some abbrevations or ambiguous terms, please do NOT expand or clarify them on your own and instead keep them as-is.
-        Your main priority is to try and use back the same wordings used by the user, just restructure the query to beautify it and also add context to it if needed to improve the search result on a RAG system.
+        You are a smart AI agent designed to answer user's questions. Reformat the user's question accordingly.
+        When reformatting, try to use the same wording as the original query as much as possible. Only beautify the query.
         
         Return the reformulated query only, without any additional text.
         """
@@ -41,9 +41,8 @@ def get_retry_prompt(user_text: list[str]) -> str:
         The previous reformulated queries were:
         {', '.join(user_text[1:])}
 
-        You are an expert information specialist for the Marriott Hotel and Georgetown, Penang designed to answer user's questions. Try to ask in a different way than the previous reformulated queries.
-        When the user's query contains some abbrevations or ambiguous terms, please do NOT expand or clarify them on your own and instead keep them as-is.
-        Your main priority is to try and avoid using the same words as tried previously, but ensure that the intended meaning of the user's original query is preserved.
+        You are a smart AI agent designed to answer user's questions. Try to ask in a different way by using different wording than the previous reformulated queries.
+        However, ensure the semantics and intent of the original query is preserved.
         Return the reformulated query only, without any additional text.
         """
 
