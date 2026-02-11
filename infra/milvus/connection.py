@@ -1,5 +1,5 @@
 from pymilvus import connections, db
-from configs.config import MILVUS_HOST, MILVUS_PORT, MILVUS_DATABASE
+from config.config import MILVUS_HOST, MILVUS_PORT, MILVUS_DATABASE
 
 
 def connect_milvus(database: str = None):

@@ -8,19 +8,19 @@ sys.path.insert(0, str(project_root))
 import asyncio
 from retrieval.pipeline import RetrievalPipeline
 
+input = "why can't i access rental payment page?"
+
 
 async def main():
     retrieval_pipeline = RetrievalPipeline()
     results = await retrieval_pipeline.retrieve(
-        "who is beyonce?",
-        top_k=10,
+        input,
+        top_k=5,
         retrieval_k=20,
         rerank_method="weighted",
     )
 
-    print(
-        f"Retrieved {len(results)} results for the query: 'what was a popular club in ibiza that started playing dance and house music?'"
-    )
+    print(f"Retrieved {len(results)} results for the query: '{input}'")
 
     print("Top results:")
     for i, result in enumerate(results, 1):

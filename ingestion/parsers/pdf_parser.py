@@ -96,9 +96,7 @@ class PDFParser(BaseParser):
             if page_num < total_pages - 1:
                 next_page_text = pdf_document[page_num + 1].get_text()
                 context_lines = "\n".join(next_page_text.split("\n")[:next_page_lines])
-                combined_text = (
-                    f"{combined_text}\n\n[Next Page Context]:\n{context_lines}"
-                )
+                combined_text = f"{combined_text}\n{context_lines}"
 
             if image_descriptions:
                 image_section = "\n\n--- Visual Descriptions ---\n" + "\n\n".join(

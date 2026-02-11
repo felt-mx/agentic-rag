@@ -1,6 +1,6 @@
 import httpx
 import json
-from configs.config import VLLM_API_URL, VLLM_GEN_API_PORT, VLLM_GEN_MODEL_NAME
+from config.config import VLLM_API_URL, VLLM_GEN_API_PORT, VLLM_GEN_MODEL_NAME
 
 
 class VLLMClient:
@@ -37,9 +37,14 @@ class VLLMClient:
                         # In streaming mode, content is in delta, not message
                         if "choices" in data and len(data["choices"]) > 0:
                             delta = data["choices"][0].get("delta", {})
+
+                            reasoning = delta.get("reasoning", "")
+                            if reasoning:
+                                yield ("thinking", reasoning)
+
                             content = delta.get("content", "")
                             if content:
-                                yield content
+                                yield ("content", content)
                     except json.JSONDecodeError as e:
                         continue
 

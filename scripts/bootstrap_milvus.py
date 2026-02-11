@@ -9,7 +9,7 @@ from pymilvus import utility
 from infra.milvus.connection import connect_milvus
 from infra.milvus.schema import create_chunk_collection
 from infra.milvus.indexes import create_dense_index
-from configs.config import MILVUS_DATABASE
+from config.config import MILVUS_DATABASE
 
 
 def bootstrap_milvus(database: str = None):

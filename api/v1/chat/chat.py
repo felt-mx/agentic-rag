@@ -8,7 +8,7 @@ from retrieval.answer.prompt_builder import (
     build_retry_prompt,
     build_relevance_check_prompt,
 )
-from configs.config import MILVUS_DATABASE
+from config.config import MILVUS_DATABASE
 
 chat_router = APIRouter(prefix="/chat")
 

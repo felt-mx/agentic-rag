@@ -20,7 +20,7 @@ import argparse
 from pathlib import Path
 from infra.milvus.connection import connect_milvus
 from ingestion.pipeline import IngestionPipeline
-from configs.config import MILVUS_DATABASE
+from config.config import MILVUS_DATABASE
 
 
 async def main():

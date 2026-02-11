@@ -1,6 +1,6 @@
 import httpx
 import json
-from configs.config import VLLM_API_URL, VLLM_RERANK_API_PORT, VLLM_RERANK_MODEL_NAME
+from config.config import VLLM_API_URL, VLLM_RERANK_API_PORT, VLLM_RERANK_MODEL_NAME
 
 
 class VLLMClient:

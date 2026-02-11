@@ -163,10 +163,15 @@ async def chat_stream(sid, data):
 
         # Stream the response content
         full_content = ""
-        async for content_chunk in vllm_client.stream(prompt, tools=None):
-            if content_chunk:
-                full_content += content_chunk
-                await sio.emit("stream_content", {"content": content_chunk}, room=sid)
+        async for chunk_type, content_chunk in vllm_client.stream(prompt, tools=None):
+            if chunk_type == "thinking":
+                await sio.emit("stream_thinking", {"content": content_chunk}, room=sid)
+            elif chunk_type == "content":
+                if content_chunk:
+                    full_content += content_chunk
+                    await sio.emit(
+                        "stream_content", {"content": content_chunk}, room=sid
+                    )
 
         # Build complete response data
         scores_and_metadata = []

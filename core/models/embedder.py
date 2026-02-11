@@ -1,6 +1,6 @@
 import httpx
 import json
-from configs.config import (
+from config.config import (
     VLLM_API_URL,
     VLLM_EMBED_API_PORT,
     VLLM_EMBED_MODEL_NAME,

@@ -16,7 +16,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, System
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from pydantic import PrivateAttr
-from configs.config import VLLM_API_URL, VLLM_GEN_API_PORT, VLLM_GEN_MODEL_NAME
+from config.config import VLLM_API_URL, VLLM_GEN_API_PORT, VLLM_GEN_MODEL_NAME
 
 
 # Helper function to run async code safely in threads

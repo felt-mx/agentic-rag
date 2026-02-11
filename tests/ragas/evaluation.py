@@ -22,7 +22,7 @@ import asyncio
 import ast
 
 # Import your pipeline components
-from configs.config import (
+from config.config import (
     MILVUS_DATABASE,
     VLLM_API_URL,
     VLLM_GEN_API_PORT,
