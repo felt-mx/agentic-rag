@@ -17,4 +17,4 @@ services:
       - VLLM_GEN_MODEL_NAME=YOUR_VLLM_GENERATION_MODEL_NAME
       - CUSTOM_JINA_API_PORT=YOUR_CUSTOM_JINA_API_PORT
     volumes:
-      - /documents:/documents
+      - ./documents:/app/documents
