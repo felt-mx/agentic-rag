@@ -5,7 +5,7 @@ def get_system_prompt(answer_context: str) -> str:
         The following context is extracted from various documents to help you answer the user's question.
         Context: {answer_context}
 
-        Strictly answer only if the context contains the specific fact. If the answer is not present, you MUST respond with [I don't know]. Do not use outside knowledge.
+        Strictly answer only if the context contains the specific fact. If the answer is not present, you MUST respond that you do not know. Do not use outside knowledge.
         Do NOT make assumptions and ensure your answer is directly supported by the provided context.
         When answering the user's question based on the provided answer, answer with confidence and clarity.
         Basic greetings are allowed, but other than that, you must not generate any information that is not present in the context.
