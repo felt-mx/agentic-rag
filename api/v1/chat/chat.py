@@ -36,8 +36,6 @@ async def chat(request: ChatRequest):
 
         input_texts = [request.text]
 
-        print(reformulated_response)
-
         reformulated_text = reformulated_response.get("content", "").strip()
 
         results = await retrieval_pipeline.retrieve(
@@ -59,7 +57,8 @@ async def chat(request: ChatRequest):
                 reformulated_response = await vllm_client.generate(
                     retry_prompt, tools=None, tool_choice=None
                 )
-                reformulated_text = reformulated_response.get("content", "").strip()
+                reformulated_text = reformulated_response.get(
+                    "content", "").strip()
 
                 print(f"Retry {count}: {reformulated_text}")
 
@@ -71,7 +70,8 @@ async def chat(request: ChatRequest):
                 )
             elif results and count < 3:
                 # Second check: Are the results actually relevant and sufficient?
-                relevance_prompt = build_relevance_check_prompt(request.text, results)
+                relevance_prompt = build_relevance_check_prompt(
+                    request.text, results)
                 relevance_response = await vllm_client.generate(
                     relevance_prompt, tools=None, tool_choice=None
                 )
@@ -90,9 +90,11 @@ async def chat(request: ChatRequest):
                     reformulated_response = await vllm_client.generate(
                         retry_prompt, tools=None, tool_choice=None
                     )
-                    reformulated_text = reformulated_response.get("content", "").strip()
+                    reformulated_text = reformulated_response.get(
+                        "content", "").strip()
 
-                    print(f"Retry {count} (insufficient results): {reformulated_text}")
+                    print(
+                        f"Retry {count} (insufficient results): {reformulated_text}")
 
                     results = await retrieval_pipeline.retrieve(
                         reformulated_text,
@@ -115,7 +117,7 @@ async def chat(request: ChatRequest):
         prompt = build_prompt(results, request.text, None)
 
         # Pure HTTP response - no streaming
-        response = await vllm_client.generate(prompt, tools=None, tool_choice=None)
+        response = await vllm_client.generate(prompt, tools=None, tool_choice=None, enable_thinking=True)
 
         # Build list of scores and metadata from all results
         scores_and_metadata = []

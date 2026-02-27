@@ -52,7 +52,8 @@ class RetrievalPipeline:
             else:
                 # Normalize dense and sparse weights to sum to 1
                 total = self.dense_weight + self.sparse_weight
-                weights = [self.dense_weight / total, self.sparse_weight / total]
+                weights = [self.dense_weight / total,
+                           self.sparse_weight / total]
 
         # Perform hybrid retrieval
         results = self.retriever.retrieve(
@@ -65,12 +66,24 @@ class RetrievalPipeline:
             use_image=use_image,
         )
 
+        for i, result in enumerate(results):
+            print(f"Initial retrieved results {i}:", result)
+            print("\n")
+
+        print(
+            "\n--------------------------------------------Reranking results--------------------------------------------\n"
+        )
+
         if self.reranker and results:
             results = await self.reranker.rerank(
                 query=query["text"],
                 chunks=results,
                 top_k=top_k,
             )
+
+        for i, result in enumerate(results):
+            print(f"Reranked results {i}:", result)
+            print("\n")
 
         # Normalize scores
         # results = normalize_scores(results)

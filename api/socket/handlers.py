@@ -77,7 +77,8 @@ async def chat_stream(sid, data):
                 reformulated_response = await vllm_client.generate(
                     retry_prompt, tools=None, tool_choice=None
                 )
-                reformulated_text = reformulated_response.get("content", "").strip()
+                reformulated_text = reformulated_response.get(
+                    "content", "").strip()
 
                 print(f"Retry {count}: {reformulated_text}")
 
@@ -99,7 +100,8 @@ async def chat_stream(sid, data):
                 )
             elif results and count < 3:
                 # Check relevance
-                relevance_prompt = build_relevance_check_prompt(user_text, results)
+                relevance_prompt = build_relevance_check_prompt(
+                    user_text, results)
                 relevance_response = await vllm_client.generate(
                     relevance_prompt, tools=None, tool_choice=None
                 )
@@ -123,9 +125,11 @@ async def chat_stream(sid, data):
                     reformulated_response = await vllm_client.generate(
                         retry_prompt, tools=None, tool_choice=None
                     )
-                    reformulated_text = reformulated_response.get("content", "").strip()
+                    reformulated_text = reformulated_response.get(
+                        "content", "").strip()
 
-                    print(f"Retry {count} (insufficient results): {reformulated_text}")
+                    print(
+                        f"Retry {count} (insufficient results): {reformulated_text}")
 
                     await sio.emit(
                         "processing",
@@ -163,7 +167,7 @@ async def chat_stream(sid, data):
 
         # Stream the response content
         full_content = ""
-        async for chunk_type, content_chunk in vllm_client.stream(prompt, tools=None):
+        async for chunk_type, content_chunk in vllm_client.stream(prompt, tools=None, enable_thinking=True):
             if chunk_type == "thinking":
                 await sio.emit("stream_thinking", {"content": content_chunk}, room=sid)
             elif chunk_type == "content":

@@ -4,8 +4,15 @@ from config.config import VLLM_API_URL, VLLM_GEN_API_PORT, VLLM_GEN_MODEL_NAME
 
 
 class VLLMClient:
-    async def stream(self, messages, tools=None):
-        payload = {"model": VLLM_GEN_MODEL_NAME, "messages": messages, "stream": True}
+    async def stream(self, messages, tools=None, temperature=0.7, enable_thinking=False):
+        payload = {
+            "model": VLLM_GEN_MODEL_NAME,
+            "messages": messages, "stream": True,
+            "temperature": temperature,
+            "chat_template_kwargs": {
+                "enable_thinking": enable_thinking,
+            },
+        }
         if tools:
             payload["tools"] = tools
 
@@ -48,12 +55,15 @@ class VLLMClient:
                     except json.JSONDecodeError as e:
                         continue
 
-    async def generate(self, messages, tools=None, tool_choice=None, temperature=0.7):
+    async def generate(self, messages, tools=None, tool_choice=None, temperature=0.7, enable_thinking=False):
         payload = {
             "model": VLLM_GEN_MODEL_NAME,
             "messages": messages,
             "stream": False,
             "temperature": temperature,
+            "chat_template_kwargs": {
+                "enable_thinking": enable_thinking,
+            }
         }
         if tools:
             payload["tools"] = tools

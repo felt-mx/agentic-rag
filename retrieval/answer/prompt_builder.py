@@ -11,8 +11,11 @@ def build_prompt(answer_context, user_text, images=None):
     prompt = []
 
     # Add system prompt
-    system_content = get_system_prompt(answer_context, user_text)
+    system_content = get_system_prompt(answer_context)
     prompt.append({"role": "system", "content": system_content})
+
+    # Add user message (required by vLLM)
+    prompt.append({"role": "user", "content": user_text})
 
     return prompt
 
@@ -21,8 +24,11 @@ def build_reformulation_prompt(user_text):
     prompt = []
 
     # Add reformulation prompt
-    reformatted_content = get_reformatted_prompt(user_text)
+    reformatted_content = get_reformatted_prompt()
     prompt.append({"role": "system", "content": reformatted_content})
+
+    # Add user message (required by vLLM)
+    prompt.append({"role": "user", "content": user_text})
 
     return prompt
 
@@ -33,14 +39,20 @@ def build_retry_prompt(user_text: list[str]) -> str:
     retry_content = get_retry_prompt(user_text)
     prompt.append({"role": "system", "content": retry_content})
 
+    # Add user message (required by vLLM)
+    prompt.append({"role": "user", "content": user_text[0]})
+
     return prompt
 
 
 def build_relevance_check_prompt(user_query: str, retrieved_results: list) -> list:
     prompt = []
 
-    relevance_content = get_relevance_check_prompt(user_query, retrieved_results)
+    relevance_content = get_relevance_check_prompt(retrieved_results)
     prompt.append({"role": "system", "content": relevance_content})
+
+    # Add user message (required by vLLM)
+    prompt.append({"role": "user", "content": user_query})
 
     return prompt
 
