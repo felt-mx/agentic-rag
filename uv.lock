@@ -22,9 +22,13 @@ dependencies = [
     { name = "pymupdf" },
     { name = "python-docx" },
     { name = "python-socketio" },
-    { name = "ragas" },
     { name = "rapidfuzz" },
     { name = "uvicorn" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "ragas" },
 ]
 
 [package.metadata]
@@ -39,10 +43,12 @@ requires-dist = [
     { name = "pymupdf", specifier = ">=1.26.7" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-socketio", specifier = ">=5.16.0" },
-    { name = "ragas", specifier = ">=0.4.3" },
     { name = "rapidfuzz", specifier = ">=3.14.3" },
     { name = "uvicorn", specifier = ">=0.40.0" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ragas", specifier = ">=0.4.3" }]
 
 [[package]]
 name = "aiohappyeyeballs"

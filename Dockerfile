@@ -28,7 +28,7 @@ COPY pyproject.toml uv.lock ./
 # --no-install-project: Installs only dependencies, not the app itself (better caching)
 # --no-dev: Excludes development dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-dev
+    uv sync --frozen --no-install-project --no-dev --no-cache
 
 # Stage 2: Runtime
 FROM python:3.11.9-slim
