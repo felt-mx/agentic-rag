@@ -31,10 +31,6 @@ async def chat_stream(sid, data):
             await sio.emit("error", {"message": "No text provided"}, room=sid)
             return
 
-        await sio.emit(
-            "stream_start", {"message": "Processing your request..."}, room=sid
-        )
-
         retrieval_pipeline = RetrievalPipeline()
         vllm_client = VLLMClient()
         count = 0
@@ -50,12 +46,6 @@ async def chat_stream(sid, data):
         reformulated_text = reformulated_response.get("content", "").strip()
 
         print(reformulated_response)
-
-        await sio.emit(
-            "processing",
-            {"step": "query_reformulation", "reformulated_query": reformulated_text},
-            room=sid,
-        )
 
         # Retrieve relevant documents
         results = await retrieval_pipeline.retrieve(
@@ -82,16 +72,6 @@ async def chat_stream(sid, data):
 
                 print(f"Retry {count}: {reformulated_text}")
 
-                await sio.emit(
-                    "processing",
-                    {
-                        "step": "retry_reformulation",
-                        "attempt": count,
-                        "reformulated_query": reformulated_text,
-                    },
-                    room=sid,
-                )
-
                 results = await retrieval_pipeline.retrieve(
                     reformulated_text,
                     top_k=5,
@@ -111,12 +91,6 @@ async def chat_stream(sid, data):
 
                 print(f"Relevance check: {relevance_verdict}")
 
-                await sio.emit(
-                    "processing",
-                    {"step": "relevance_check", "verdict": relevance_verdict},
-                    room=sid,
-                )
-
                 if "INSUFFICIENT" in relevance_verdict:
                     count += 1
                     input_texts.append(reformulated_text)
@@ -130,16 +104,6 @@ async def chat_stream(sid, data):
 
                     print(
                         f"Retry {count} (insufficient results): {reformulated_text}")
-
-                    await sio.emit(
-                        "processing",
-                        {
-                            "step": "insufficient_retry",
-                            "attempt": count,
-                            "reformulated_query": reformulated_text,
-                        },
-                        room=sid,
-                    )
 
                     results = await retrieval_pipeline.retrieve(
                         reformulated_text,
@@ -160,10 +124,6 @@ async def chat_stream(sid, data):
 
         # Build final prompt and start streaming
         prompt = build_prompt(results, user_text, None)
-
-        await sio.emit(
-            "stream_content_start", {"message": "Generating response..."}, room=sid
-        )
 
         # Stream the response content
         full_content = ""
@@ -206,9 +166,6 @@ async def chat_stream(sid, data):
                 "all_results": scores_and_metadata,
             }
         }
-
-        # Send complete response
-        await sio.emit("stream_complete", complete_response, room=sid)
 
     except Exception as e:
         await sio.emit("error", {"message": str(e)}, room=sid)
