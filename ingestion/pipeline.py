@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 from typing import List, Union, Literal
 from core.models.chunk import Chunk
@@ -12,7 +13,11 @@ class IngestionPipeline:
         self.chunker = LateChunker()
         self.database = database
 
-    async def ingest_file(self, file_path: Union[str, Path]) -> List[Chunk]:
+    async def ingest_file(
+        self,
+        file_path: Union[str, Path],
+        completed_dir: Union[str, Path, None] = None,
+    ) -> List[Chunk]:
         file_path = Path(file_path)
 
         if not file_path.exists():
@@ -21,6 +26,10 @@ class IngestionPipeline:
         document = await self.parser_registry.parse(file_path)
         chunks = await self.chunker.chunk_document(document)
         upsert_chunks(chunks, database=self.database)
+
+        dest_dir = Path(completed_dir) if completed_dir else file_path.parent / "completed"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(file_path), str(dest_dir / file_path.name))
 
         return chunks
 
@@ -33,16 +42,21 @@ class IngestionPipeline:
         all_chunks = []
         supported_extensions = [".txt", ".pdf", ".docx", ".doc", ".csv"]
 
+        completed_dir = dir_path / "completed"
+
         files = [
             f
             for f in dir_path.rglob("*")
-            if f.is_file() and f.suffix.lower() in supported_extensions
+            if f.is_file()
+            and f.suffix.lower() in supported_extensions
+            and completed_dir not in f.parents
         ]
 
         for i, file_path in enumerate(files, 1):
             try:
-                chunks = await self.ingest_file(file_path)
+                chunks = await self.ingest_file(file_path, completed_dir=completed_dir)
                 all_chunks.extend(chunks)
+                print(f"[{i}/{len(files)}] Ingested and moved: {file_path.name}")
             except Exception as e:
                 print(f"Error ingesting {file_path.name}: {e}\n")
 

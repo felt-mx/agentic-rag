@@ -137,7 +137,7 @@ class PDFParser(BaseParser):
         """Helper to call VLLM API"""
         try:
             image_prompt = build_image_description_prompt(image_data)
-            response = await client.generate(image_prompt, tools=None, tool_choice=None)
+            response = await client.generate(image_prompt, tools=None, tool_choice=None, enable_thinking=False)
 
             print(response)
             return response.get("content", "").strip()
