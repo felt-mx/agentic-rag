@@ -1,3 +1,4 @@
+import logging
 import shutil
 from pathlib import Path
 from typing import List, Union, Literal
@@ -5,6 +6,8 @@ from core.models.chunk import Chunk
 from ingestion.parsers import ParserRegistry
 from ingestion.chunkers.late_chunker import LateChunker
 from infra.milvus.client import upsert_chunks
+
+logger = logging.getLogger(__name__)
 
 
 class IngestionPipeline:
@@ -23,13 +26,17 @@ class IngestionPipeline:
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
+        logger.info("Parsing: %s", file_path.name)
         document = await self.parser_registry.parse(file_path)
+        logger.info("Chunking: %s", file_path.name)
         chunks = await self.chunker.chunk_document(document)
+        logger.info("Upserting %d chunk(s) from: %s", len(chunks), file_path.name)
         upsert_chunks(chunks, database=self.database)
 
         dest_dir = Path(completed_dir) if completed_dir else file_path.parent / "completed"
         dest_dir.mkdir(parents=True, exist_ok=True)
         shutil.move(str(file_path), str(dest_dir / file_path.name))
+        logger.info("Moved to completed: %s", file_path.name)
 
         return chunks
 
@@ -52,12 +59,16 @@ class IngestionPipeline:
             and completed_dir not in f.parents
         ]
 
+        total = len(files)
+        logger.info("Detected %d file(s) to ingest in: %s", total, dir_path)
+
         for i, file_path in enumerate(files, 1):
+            logger.info("[%d/%d] Starting: %s", i, total, file_path.name)
             try:
                 chunks = await self.ingest_file(file_path, completed_dir=completed_dir)
                 all_chunks.extend(chunks)
-                print(f"[{i}/{len(files)}] Ingested and moved: {file_path.name}")
+                logger.info("[%d/%d] Done (%d chunks): %s", i, total, len(chunks), file_path.name)
             except Exception as e:
-                print(f"Error ingesting {file_path.name}: {e}\n")
+                logger.error("[%d/%d] Failed: %s — %s", i, total, file_path.name, e)
 
         return all_chunks
