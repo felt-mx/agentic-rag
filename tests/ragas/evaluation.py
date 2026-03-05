@@ -1,27 +1,22 @@
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-# Set dummy OpenAI key to satisfy client validation
-os.environ["OPENAI_API_KEY"] = "sk-dummy-key-for-local-usage"
-
-import pandas as pd
-from datasets import Dataset
-from ragas import evaluate
-from ragas.metrics import (
-    context_precision,
-    context_recall,
-    faithfulness,
-    answer_relevancy,
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from retrieval.answer.prompt_builder import (
+    build_prompt,
+    build_critique_prompt,
+    build_clarifying_question_prompt,
 )
-import asyncio
-import ast
-
-# Import your pipeline components
+from retrieval.query.corpus_summary import get_corpus_summary
+from retrieval.query.dispatcher import dispatch
+from retrieval.state import AgentState
+from retrieval.pipeline import RetrievalPipeline
+from core.models.generator import VLLMClient
 from config.config import (
     MILVUS_DATABASE,
     VLLM_API_URL,
@@ -30,15 +25,25 @@ from config.config import (
     VLLM_EMBED_API_PORT,
     VLLM_EMBED_MODEL_NAME,
 )
-from core.models.generator import VLLMClient
-from retrieval.pipeline import RetrievalPipeline
-from retrieval.answer.prompt_builder import (
-    build_prompt,
-    build_reformulation_prompt,
-    build_retry_prompt,
-    build_relevance_check_prompt,
+import ast
+import asyncio
+from ragas.metrics import (
+    context_precision,
+    context_recall,
+    faithfulness,
+    answer_relevancy,
 )
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from ragas import evaluate
+from datasets import Dataset
+import pandas as pd
+
+
+
+# Set dummy OpenAI key to satisfy client validation
+os.environ["OPENAI_API_KEY"] = "sk-dummy-key-for-local-usage"
+
+
+# Import your pipeline components
 
 
 # ==========================================
@@ -55,116 +60,97 @@ async def my_rag_pipeline_async(query: str, database: str = None):
         # Use specified database or fall back to config
         database = database or MILVUS_DATABASE
         retrieval_pipeline = RetrievalPipeline(database=database)
-
         vllm_client = VLLMClient()
-        count = 0
-        input_texts = []
+        corpus_summary = get_corpus_summary()
 
-        reformulation_prompt = build_reformulation_prompt(query)
-        reformulated_response = await vllm_client.generate(
-            reformulation_prompt, tools=None, tool_choice=None, temperature=0.1
-        )
+        state = AgentState(original_query=query)
+        results = []
 
-        reformulated_text = ""
-        if isinstance(reformulated_response, dict):
-            reformulated_text = reformulated_response.get("content", "").strip()
-        else:
-            reformulated_text = str(reformulated_response).strip()
+        # ------------------------------------------------------------------
+        # Agentic dispatch loop
+        # ------------------------------------------------------------------
+        while state.retries_remaining >= 0:
+            # 1. Dispatch: choose strategy + processed queries
+            state = await dispatch(query, vllm_client, state, corpus_summary)
+            print(
+                f"[dispatch] strategy={state.current_strategy} "
+                f"queries={state.processed_queries} "
+                f"reason={state.reasoning}"
+            )
 
-        print(f"Reformulated: {reformulated_text}")
-        input_texts = [query]
-
-        results = await retrieval_pipeline.retrieve(
-            reformulated_text,
-            top_k=5,
-            retrieval_k=20,
-            rerank_method="weighted",
-        )
-
-        while True:
-            # First check: Are there any results?
-            if not results and count < 3:
-                count += 1
-
-                input_texts.append(reformulated_text)
-                retry_prompt = build_retry_prompt(input_texts)
-
-                reformulated_response = await vllm_client.generate(
-                    retry_prompt, tools=None, tool_choice=None
-                )
-                if isinstance(reformulated_response, dict):
-                    reformulated_text = reformulated_response.get("content", "").strip()
-                else:
-                    reformulated_text = str(reformulated_response).strip()
-
-                print(f"Retry {count}: {reformulated_text}")
-
-                results = await retrieval_pipeline.retrieve(
-                    reformulated_text,
+            # 2. Execute the chosen strategy worker
+            if state.current_strategy == "Expansion":
+                results = await retrieval_pipeline.retrieve_with_expansion(
+                    original_query=query,
                     top_k=5,
                     retrieval_k=20,
-                    rerank_method="weighted",
                 )
-            elif results and count < 3:
-                # Second check: Are the results actually relevant and sufficient?
-                relevance_prompt = build_relevance_check_prompt(query, results)
-                relevance_response = await vllm_client.generate(
-                    relevance_prompt, tools=None, tool_choice=None
+            elif state.current_strategy == "Decomposition":
+                results = await retrieval_pipeline.retrieve_with_decomposition(
+                    original_query=query,
+                    queries=state.processed_queries,
+                    top_k=5,
+                    retrieval_k=20,
+                )
+            else:
+                # Hybrid: decompose then expand each sub-query
+                results = await retrieval_pipeline.retrieve_hybrid(
+                    original_query=query,
+                    sub_queries=state.processed_queries,
+                    top_k=5,
+                    retrieval_k=20,
                 )
 
-                relevance_verdict = ""
-                if isinstance(relevance_response, dict):
-                    relevance_verdict = (
-                        relevance_response.get("content", "").strip().upper()
-                    )
-                else:
-                    relevance_verdict = str(relevance_response).strip().upper()
+            print(f"[retrieval] got {len(results)} results")
 
-                print(f"Relevance check: {relevance_verdict}")
+            # 3. Sufficiency check
+            if results:
+                critique_prompt = build_critique_prompt(query, results)
+                critique_response = await vllm_client.generate(
+                    critique_prompt, tools=None, tool_choice=None
+                )
+                critique_text = critique_response.get("content", "").strip()
+                first_line = critique_text.splitlines()[0].strip().upper()
+                print(f"[sufficiency] {critique_text}")
 
-                if "INSUFFICIENT" in relevance_verdict:
-                    # Results exist but are not relevant enough, retry with reformulation
-                    count += 1
-                    input_texts.append(reformulated_text)
-                    retry_prompt = build_retry_prompt(input_texts)
-
-                    reformulated_response = await vllm_client.generate(
-                        retry_prompt, tools=None, tool_choice=None
-                    )
-
-                    if isinstance(reformulated_response, dict):
-                        reformulated_text = reformulated_response.get(
-                            "content", ""
-                        ).strip()
-                    else:
-                        reformulated_text = str(reformulated_response).strip()
-
-                    print(f"Retry {count} (insufficient results): {reformulated_text}")
-
-                    results = await retrieval_pipeline.retrieve(
-                        reformulated_text,
-                        top_k=5,
-                        retrieval_k=20,
-                        rerank_method="weighted",
-                    )
-                else:
-                    # Results are sufficient, exit the loop
+                if "INSUFFICIENT" not in first_line:
+                    state.best_results = results
                     break
-            else:  # Either max retries reached or results found and relevant
-                break
+                else:
+                    lines = critique_text.splitlines()
+                    critique_sentence = lines[1].strip() if len(
+                        lines) > 1 else critique_text
+                    state.critique_log.append(critique_sentence)
+                    if results and not state.best_results:
+                        state.best_results = results
+            else:
+                state.critique_log.append("Retrieval returned no results.")
+
+            state.retries_remaining -= 1
+
+        # ------------------------------------------------------------------
+        # Exit strategy
+        # ------------------------------------------------------------------
+        final_results = results if results else state.best_results
 
         # Prepare contexts for RAGAS
         contexts = []
-        if results and isinstance(results, list):
-            contexts = [res.get("answer", "") for res in results]
+        if final_results and isinstance(final_results, list):
+            contexts = [res.get("answer", "") for res in final_results]
 
-        if not results:
-            results = "No relevant information found."
+        if not final_results:
+            clarify_prompt = build_clarifying_question_prompt(
+                query, state.critique_log)
+            clarify_response = await vllm_client.generate(
+                clarify_prompt, tools=None, tool_choice=None
+            )
+            clarifying_text = clarify_response.get("content", "").strip()
+            return clarifying_text, []
 
-        prompt = build_prompt(results, query, None)
-
-        # Pure HTTP response - no streaming
-        response = await vllm_client.generate(prompt, tools=None, tool_choice=None)
+        prompt = build_prompt(final_results, query, None)
+        response = await vllm_client.generate(
+            prompt, tools=None, tool_choice=None, enable_thinking=False
+        )
 
         # Extract answer text
         answer = ""
@@ -207,7 +193,8 @@ def run_evaluation(csv_path, output_name, database=None, sample_size=None):
 
     # Randomly sample the dataset if sample_size is provided
     if sample_size and len(df) > sample_size:
-        print(f"Sampling {sample_size} random questions from {len(df)} total...")
+        print(
+            f"Sampling {sample_size} random questions from {len(df)} total...")
         df = df.sample(n=sample_size, random_state=42)
 
     # Parse the 'answers' column to extract ground_truth
@@ -222,12 +209,14 @@ def run_evaluation(csv_path, output_name, database=None, sample_size=None):
         import re
 
         # Pattern 1: Standard single quoted array
-        match = re.search(r"'text':\s*array\(\s*\[\s*'([^']*)'\s*\]", answers_str)
+        match = re.search(
+            r"'text':\s*array\(\s*\[\s*'([^']*)'\s*\]", answers_str)
         if match:
             return match.group(1)
 
         # Pattern 2: Double quoted array
-        match = re.search(r"'text':\s*array\(\s*\[\s*\"([^\"]*)\"\s*\]", answers_str)
+        match = re.search(
+            r"'text':\s*array\(\s*\[\s*\"([^\"]*)\"\s*\]", answers_str)
         if match:
             return match.group(1)
 
@@ -262,10 +251,12 @@ def run_evaluation(csv_path, output_name, database=None, sample_size=None):
 
     # Add results back to the dataframe
     df["answer"] = generated_answers
-    df["contexts"] = retrieved_contexts  # RAGAS needs this column name strictly
+    # RAGAS needs this column name strictly
+    df["contexts"] = retrieved_contexts
 
     # Ensure we have all required columns: question, answer, contexts, ground_truth
-    print(f"Dataset preview:\n{df[['question', 'answer', 'ground_truth']].head(2)}")
+    print(
+        f"Dataset preview:\n{df[['question', 'answer', 'ground_truth']].head(2)}")
 
     # Convert to HuggingFace Dataset
     ragas_dataset = Dataset.from_pandas(
@@ -287,27 +278,27 @@ def run_evaluation(csv_path, output_name, database=None, sample_size=None):
     )
 
     # Run Metrics
-    print("Skipping RAGAS metrics calculation...")
-    # results = evaluate(
-    #     ragas_dataset,
-    #     metrics=[
-    #         context_precision,  # Quality of Reranker
-    #         context_recall,  # Quality of Hybrid Search
-    #         faithfulness,  # Quality of LLM adherence to context
-    #         answer_relevancy,  # Quality of Agent/Answer
-    #     ],
-    #     llm=evaluator_llm,
-    #     embeddings=evaluator_embeddings,
-    # )
+    print("Running RAGAS metrics calculation...")
+    results = evaluate(
+        ragas_dataset,
+        metrics=[
+            context_precision,  # Quality of Reranker
+            context_recall,  # Quality of Hybrid Search
+            faithfulness,  # Quality of LLM adherence to context
+            answer_relevancy,  # Quality of Agent/Answer
+        ],
+        llm=evaluator_llm,
+        embeddings=evaluator_embeddings,
+    )
 
-    print(f"Skipping scores display.")
+    print(f"Scores: {results}")
 
     # Save detailed breakdown (essential for debugging)
-    # results_df = results.to_pandas()
-    results_df = df
+    results_df = results.to_pandas()
 
     # Define output path - prefer 'documents' folder so it's accessible outside container if mounted
-    output_path = project_root / "documents" / f"{output_name}_detailed_results.csv"
+    output_path = project_root / "documents" / \
+        f"{output_name}_detailed_results.csv"
 
     try:
         results_df.to_csv(output_path, index=False)

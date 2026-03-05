@@ -5,8 +5,11 @@ def get_system_prompt(answer_context: str) -> str:
         The following context is extracted from various documents to help you answer the user's question.
         Context: {answer_context}
 
-        Strictly answer only if the context contains the specific fact. If the answer is not present, you MUST respond that you do not know. Do not use outside knowledge.
-        Do NOT make assumptions and ensure your answer is directly supported by the provided context.
+        Answer based on the provided context. You may apply the following logical inference patterns if they clearly follow from the context:
+        - If the context states that only certain conditions, roles, or criteria are required for something, you may conclude the inverse for anything that does not meet those conditions.
+        - If the context states that a set of entities can do X, you may conclude that entities outside that set cannot.
+        - If the context states a prerequisite for something, you may conclude that the absence of that prerequisite prevents it.
+        Do NOT chain multiple inference steps. Do NOT speculate beyond what the context directly implies. Do NOT use outside knowledge.
         When answering the user's question based on the provided answer, answer with confidence and clarity.
         Basic greetings are allowed, but other than that, you must not generate any information that is not present in the context.
         NEVER include sources in your answer. E.g. You can find more information at...
@@ -79,4 +82,108 @@ def get_image_description_prompt() -> str:
         You MUST extract any text present in the image and include it in the description.
         Your description can include things like objects, shapes, colors, texts, layout, or any other relevant information present in the image that may help with the retrieval process.
         Your description will be in ONE giant paragraph format without any bullet points or new lines.
+        """
+
+
+# ---------------------------------------------------------------------------
+# New prompts for the agentic dispatch / strategy loop
+# ---------------------------------------------------------------------------
+
+def get_dispatcher_prompt(corpus_summary: str, critique_log: list) -> str:
+    corpus_section = (
+        f"\n\nKnowledge Base Description:\n{corpus_summary}"
+        if corpus_summary
+        else ""
+    )
+    critique_section = (
+        f"\n\nPrevious retrieval attempts failed. Here is the critique history:\n"
+        + "\n".join(f"- {c}" for c in critique_log)
+        if critique_log
+        else ""
+    )
+    return f"""
+        You are a retrieval strategy dispatcher for an AI RAG system.
+        Your job is to analyse the user's query and choose the most effective retrieval strategy,
+        then generate the exact query strings to use for retrieval.{corpus_section}{critique_section}
+
+        Strategy rules:
+        - Decomposition: Use when the query asks about multiple distinct subjects, contains 'and', 'but',
+          or 'compare', or clearly requires separate lookups to answer fully.
+          IMPORTANT: Also use Decomposition when the query is a negation or access/permission question
+          such as "why can't I do X" or "I cannot access X". Decompose into the positive forms:
+          e.g. "who can do X", "what are the requirements/permissions for X", "X access roles".
+          Documentation typically states who CAN do something, not who cannot.
+        - Expansion: Use when the query is short, vague, uses acronyms, or lacks enough detail
+          for precise retrieval. Set processed_queries to [original_query] only — do NOT generate
+          expansion variants; the retrieval layer handles domain-aware expansion internally.
+        - Hybrid: Use when the query needs BOTH decomposition AND expansion — i.e., it has
+          multiple distinct sub-topics AND each sub-topic is also vague or terminology-sparse.
+          Provide the sub-topic queries; the retrieval layer will expand each one internally.
+
+        You MUST call the dispatch_strategy tool with your decision.
+        Do NOT answer the user's question — only plan the retrieval.
+        """
+
+
+def get_expansion_prompt(corpus_summary: str = "") -> str:
+    corpus_section = (
+        f"\n\nKnowledge Base Context:\n{corpus_summary}\n\n"
+        "Use the above to guide your terminology — especially for acronyms or domain-specific terms. "
+        "If a term in the query looks like a domain-specific acronym or component name, expand it "
+        "using terminology consistent with the knowledge base, NOT general or internet meanings."
+        if corpus_summary
+        else ""
+    )
+    return f"""You are a query expansion specialist for a RAG retrieval system.{corpus_section}
+        Your task is to rewrite the user's query into 2-3 alternative, more detailed versions
+        that preserve the original intent but use fuller terminology, synonyms, and additional context.
+
+        Rules:
+        - Do NOT answer the question.
+        - Do NOT invent facts or hypothetical answers.
+        - Only rephrase and enrich the query using different wording.
+        - Each variant must be semantically equivalent to the original.
+        - If the query contains an acronym, preserve it verbatim in at least one variant
+          and spell it out (using domain-appropriate meaning) in the others.
+
+        Return ONLY a JSON array of strings, e.g.:
+        ["expanded query 1", "expanded query 2", "expanded query 3"]
+        No other text.
+        """
+
+
+def get_critique_prompt(retrieved_results: list) -> str:
+    return f"""
+        You are a retrieval quality critic for an AI RAG system.
+
+        Retrieved Results:
+        {retrieved_results}
+
+        Evaluate whether these results are sufficient to answer the user's query.
+
+        Respond in the following format EXACTLY:
+        Line 1: Either the single word SUFFICIENT or the single word INSUFFICIENT
+        Line 2 (only if INSUFFICIENT): One sentence explaining what is missing or wrong,
+          e.g. "Results covered Product A features but contained no pricing information for Product B."
+
+        Do not add any other text.
+        """
+
+
+def get_clarifying_question_prompt(critique_log: list) -> str:
+    critique_section = (
+        "\n".join(f"- {c}" for c in critique_log)
+        if critique_log
+        else "No additional context available."
+    )
+    return f"""
+        You are a helpful AI assistant. After multiple retrieval attempts, the knowledge base
+        did not contain enough information to answer the user's question.
+
+        Previous retrieval attempts and their failures:
+        {critique_section}
+
+        Ask the user ONE concise clarifying question that would help narrow down or redirect
+        the search to more relevant information. Be specific and friendly.
+        Return only the question, no preamble.
         """

@@ -4,6 +4,10 @@ from retrieval.answer.system_prompt import (
     get_reformatted_prompt,
     get_relevance_check_prompt,
     get_image_description_prompt,
+    get_dispatcher_prompt,
+    get_expansion_prompt,
+    get_critique_prompt,
+    get_clarifying_question_prompt,
 )
 
 
@@ -79,3 +83,40 @@ def build_image_description_prompt(image_data: str) -> list:
     )
 
     return prompt
+
+
+# ---------------------------------------------------------------------------
+# New builders for the agentic dispatch / strategy loop
+# ---------------------------------------------------------------------------
+
+def build_dispatcher_prompt(
+    user_text: str, critique_log: list, corpus_summary: str = ""
+) -> list:
+    system_content = get_dispatcher_prompt(corpus_summary, critique_log)
+    return [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_text},
+    ]
+
+
+def build_expansion_prompt(query_text: str, corpus_summary: str = "") -> list:
+    return [
+        {"role": "system", "content": get_expansion_prompt(corpus_summary)},
+        {"role": "user", "content": query_text},
+    ]
+
+
+def build_critique_prompt(user_query: str, retrieved_results: list) -> list:
+    system_content = get_critique_prompt(retrieved_results)
+    return [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_query},
+    ]
+
+
+def build_clarifying_question_prompt(user_query: str, critique_log: list) -> list:
+    system_content = get_clarifying_question_prompt(critique_log)
+    return [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_query},
+    ]

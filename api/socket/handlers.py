@@ -2,11 +2,13 @@ import socketio
 from .server import get_sio
 from core.models.generator import VLLMClient
 from retrieval.pipeline import RetrievalPipeline
+from retrieval.state import AgentState
+from retrieval.query.dispatcher import dispatch
+from retrieval.query.corpus_summary import get_corpus_summary
 from retrieval.answer.prompt_builder import (
     build_prompt,
-    build_reformulation_prompt,
-    build_retry_prompt,
-    build_relevance_check_prompt,
+    build_critique_prompt,
+    build_clarifying_question_prompt,
 )
 
 sio = get_sio()
@@ -33,103 +35,136 @@ async def chat_stream(sid, data):
 
         retrieval_pipeline = RetrievalPipeline()
         vllm_client = VLLMClient()
-        count = 0
-        input_texts = []
+        corpus_summary = get_corpus_summary()
 
-        # Reformulate the query
-        reformulation_prompt = build_reformulation_prompt(user_text)
-        reformulated_response = await vllm_client.generate(
-            reformulation_prompt, tools=None, tool_choice=None, temperature=0.1
-        )
+        state = AgentState(original_query=user_text)
+        results = []
 
-        input_texts = [user_text]
-        reformulated_text = reformulated_response.get("content", "").strip()
+        # ------------------------------------------------------------------
+        # Agentic dispatch loop
+        # ------------------------------------------------------------------
+        while state.retries_remaining >= 0:
+            # 1. Dispatch: choose strategy + processed queries
+            state = await dispatch(user_text, vllm_client, state, corpus_summary)
+            await sio.emit(
+                "status",
+                {
+                    "message": (
+                        f"Strategy: {state.current_strategy} | "
+                        f"Queries: {state.processed_queries}"
+                    )
+                },
+                room=sid,
+            )
+            print(
+                f"[dispatch] strategy={state.current_strategy} "
+                f"queries={state.processed_queries} "
+                f"reason={state.reasoning}"
+            )
 
-        print(reformulated_response)
-
-        # Retrieve relevant documents
-        results = await retrieval_pipeline.retrieve(
-            reformulated_text,
-            top_k=5,
-            retrieval_k=20,
-            rerank_method="weighted",
-        )
-
-        # Retry logic for better results
-        while True:
-            if not results and count < 3:
-                top_result = None
-                count += 1
-
-                input_texts.append(reformulated_text)
-                retry_prompt = build_retry_prompt(input_texts)
-
-                reformulated_response = await vllm_client.generate(
-                    retry_prompt, tools=None, tool_choice=None
-                )
-                reformulated_text = reformulated_response.get(
-                    "content", "").strip()
-
-                print(f"Retry {count}: {reformulated_text}")
-
-                results = await retrieval_pipeline.retrieve(
-                    reformulated_text,
+            # 2. Execute the chosen strategy worker
+            if state.current_strategy == "Expansion":
+                # LLM-based query expansion then parallel retrieval
+                results = await retrieval_pipeline.retrieve_with_expansion(
+                    original_query=user_text,
                     top_k=5,
                     retrieval_k=20,
-                    rerank_method="weighted",
                 )
-            elif results and count < 3:
-                # Check relevance
-                relevance_prompt = build_relevance_check_prompt(
-                    user_text, results)
-                relevance_response = await vllm_client.generate(
-                    relevance_prompt, tools=None, tool_choice=None
+            elif state.current_strategy == "Decomposition":
+                # Parallel retrieval for each decomposed sub-query
+                results = await retrieval_pipeline.retrieve_with_decomposition(
+                    original_query=user_text,
+                    queries=state.processed_queries,
+                    top_k=5,
+                    retrieval_k=20,
                 )
-                relevance_verdict = (
-                    relevance_response.get("content", "").strip().upper()
-                )
-
-                print(f"Relevance check: {relevance_verdict}")
-
-                if "INSUFFICIENT" in relevance_verdict:
-                    count += 1
-                    input_texts.append(reformulated_text)
-                    retry_prompt = build_retry_prompt(input_texts)
-
-                    reformulated_response = await vllm_client.generate(
-                        retry_prompt, tools=None, tool_choice=None
-                    )
-                    reformulated_text = reformulated_response.get(
-                        "content", "").strip()
-
-                    print(
-                        f"Retry {count} (insufficient results): {reformulated_text}")
-
-                    results = await retrieval_pipeline.retrieve(
-                        reformulated_text,
-                        top_k=5,
-                        retrieval_k=20,
-                        rerank_method="weighted",
-                    )
-                else:
-                    break
             else:
-                break
+                # Hybrid: decompose then expand each sub-query
+                results = await retrieval_pipeline.retrieve_hybrid(
+                    original_query=user_text,
+                    sub_queries=state.processed_queries,
+                    top_k=5,
+                    retrieval_k=20,
+                )
 
-        if not results:
-            results = "No relevant information found."
-            top_result = None
-        else:
-            top_result = results[0]
+            print(f"[retrieval] got {len(results)} results")
 
-        # Build final prompt and start streaming
-        prompt = build_prompt(results, user_text, None)
+            # 3. Sufficiency check
+            if results:
+                critique_prompt = build_critique_prompt(user_text, results)
+                critique_response = await vllm_client.generate(
+                    critique_prompt, tools=None, tool_choice=None
+                )
+                critique_text = critique_response.get("content", "").strip()
+                first_line = critique_text.splitlines()[0].strip().upper()
+                print(f"[sufficiency] {critique_text}")
 
-        # Stream the response content
-        full_content = ""
-        async for chunk_type, content_chunk in vllm_client.stream(prompt, tools=None, enable_thinking=True):
+                if "INSUFFICIENT" not in first_line:
+                    # Results are good — proceed to answer generation
+                    state.best_results = results
+                    break
+                else:
+                    # Extract the critique sentence (line 2 if present)
+                    lines = critique_text.splitlines()
+                    critique_sentence = lines[1].strip() if len(
+                        lines) > 1 else critique_text
+                    state.critique_log.append(critique_sentence)
+                    if results and not state.best_results:
+                        state.best_results = results
+            else:
+                state.critique_log.append("Retrieval returned no results.")
+
+            state.retries_remaining -= 1
+
+        # ------------------------------------------------------------------
+        # Exit strategy
+        # ------------------------------------------------------------------
+        final_results = results if results else state.best_results
+        disclaimer = ""
+
+        if not final_results:
+            # Nothing useful at all — generate a clarifying question and deliver
+            # it as the answer so the frontend needs no changes.
+            clarify_prompt = build_clarifying_question_prompt(
+                user_text, state.critique_log
+            )
+            clarify_response = await vllm_client.generate(
+                clarify_prompt, tools=None, tool_choice=None
+            )
+            clarifying_text = clarify_response.get("content", "").strip()
+            await sio.emit(
+                "stream_content", {"content": clarifying_text}, room=sid
+            )
+            complete_response = {
+                "data": {
+                    "message": {"content": clarifying_text},
+                    "score": None,
+                    "metadata": {"source": None, "page": None},
+                    "all_results": [],
+                }
+            }
+            await sio.emit("stream_content", complete_response, room=sid)
+            return
+
+        if state.retries_remaining < 0 and results != state.best_results:
+            disclaimer = (
+                "> **Note:** I could not find a definitive answer after multiple attempts. "
+                "Here is the best available information:\n\n"
+            )
+
+        # ------------------------------------------------------------------
+        # Answer generation (streaming)
+        # ------------------------------------------------------------------
+        prompt = build_prompt(final_results, user_text, None)
+        full_content = disclaimer
+
+        async for chunk_type, content_chunk in vllm_client.stream(
+            prompt, tools=None, enable_thinking=True
+        ):
             if chunk_type == "thinking":
-                await sio.emit("stream_thinking", {"content": content_chunk}, room=sid)
+                await sio.emit(
+                    "stream_thinking", {"content": content_chunk}, room=sid
+                )
             elif chunk_type == "content":
                 if content_chunk:
                     full_content += content_chunk
@@ -138,34 +173,33 @@ async def chat_stream(sid, data):
                     )
 
         # Build complete response data
-        scores_and_metadata = []
-        if results and isinstance(results, list):
-            for result in results:
-                scores_and_metadata.append(
-                    {
-                        "score": result.get("score"),
-                        "metadata": {
-                            "source": result.get("metadata", {}).get("file_name"),
-                            "page": result.get("metadata", {}).get("section_title"),
-                        },
-                    }
-                )
+        top_result = final_results[0] if final_results else None
+        RAW_SCORE_MIN = 0.01
+        scores_and_metadata = [
+            {
+                "score": r.get("score"),
+                "metadata": {
+                    "source": r.get("metadata", {}).get("file_name"),
+                    "page": r.get("metadata", {}).get("section_title"),
+                },
+            }
+            for r in (final_results if isinstance(final_results, list) else [])
+            if r.get("score", 0) >= RAW_SCORE_MIN
+        ]
 
         complete_response = {
             "data": {
                 "message": {"content": full_content},
-                "score": top_result["score"] if top_result else None,
+                "score": top_result["score"] if top_result and top_result["score"] >= RAW_SCORE_MIN else None,
                 "metadata": {
-                    "source": (
-                        top_result["metadata"]["file_name"] if top_result else None
-                    ),
-                    "page": (
-                        top_result["metadata"]["section_title"] if top_result else None
-                    ),
+                    "source": top_result["metadata"]["file_name"] if top_result and top_result["score"] >= RAW_SCORE_MIN else None,
+                    "page": top_result["metadata"]["section_title"] if top_result and top_result["score"] >= RAW_SCORE_MIN else None,
                 },
                 "all_results": scores_and_metadata,
             }
         }
+
+        await sio.emit("stream_complete", complete_response, room=sid)
 
     except Exception as e:
         await sio.emit("error", {"message": str(e)}, room=sid)
