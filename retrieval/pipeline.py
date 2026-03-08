@@ -226,23 +226,50 @@ class RetrievalPipeline:
             *[self._get_expanded_queries(sq) for sq in sub_queries]
         )
 
-        # Flatten into one unique set of queries to retrieve
-        all_queries = list(
-            dict.fromkeys(q for variants in expanded_per_sub for q in variants)
-        )
         print(
-            f"[retrieve_hybrid] {len(sub_queries)} sub-queries expanded to {len(all_queries)} total queries")
+            f"[retrieve_hybrid] {len(sub_queries)} sub-queries expanded to "
+            f"{sum(len(v) for v in expanded_per_sub)} total queries"
+        )
 
-        raw_results = await asyncio.gather(
-            *[self._retrieve_raw(q, retrieval_k) for q in all_queries]
+        # Retrieve raw chunks for each sub-query's expansion variants.
+        raw_per_sub = await asyncio.gather(
+            *[
+                asyncio.gather(*[self._retrieve_raw(q, retrieval_k)
+                               for q in variants])
+                for variants in expanded_per_sub
+            ]
+        )
+
+        # Per-sub-query rerank: guarantee balanced slots per topic before the
+        # global rerank (same reasoning as retrieve_with_decomposition).
+        slots_per_query = max(5, top_k // len(sub_queries)
+                              ) if sub_queries else top_k
+
+        per_sub_chunks = await asyncio.gather(
+            *[
+                self.reranker.rerank(
+                    query=sub_q,
+                    chunks=self._deduplicate(
+                        [chunk for batch in raw_batches for chunk in batch]
+                    ),
+                    top_k=slots_per_query,
+                )
+                for sub_q, raw_batches in zip(sub_queries, raw_per_sub)
+            ]
         )
 
         pooled = self._deduplicate(
-            [chunk for batch in raw_results for chunk in batch])
+            [chunk for batch in per_sub_chunks for chunk in batch]
+        )
         print(
-            f"[retrieve_hybrid] {len(pooled)} unique chunks after dedup across {len(all_queries)} queries")
+            f"[retrieve_hybrid] {len(pooled)} balanced chunks "
+            f"({slots_per_query} slots × {len(sub_queries)} sub-queries) before global rerank"
+        )
+        # score_threshold=0.0 — per-sub-query rerank already validated each
+        # chunk; applying a global threshold here would again kill minority
+        # topics due to cross-encoder score imbalance.
         return await self._global_rerank_and_filter(
-            original_query, pooled, top_k, score_threshold
+            original_query, pooled, len(pooled), score_threshold=0.0
         )
 
     async def retrieve_with_decomposition(
@@ -255,9 +282,12 @@ class RetrievalPipeline:
         score_threshold: float = 0.25,
     ) -> list:
         """
-        Decomposition strategy: run _retrieve_raw for each dispatcher-produced
-        sub-query in parallel, deduplicate the pooled ScoredChunks, then
-        globally rerank against the original query.
+        Decomposition strategy: retrieve raw chunks per sub-query, then rerank
+        each sub-query's pool against *that sub-query's text* to guarantee a
+        balanced number of slots per topic before globally reranking.
+
+        Without this step a single dominant topic floods the global rerank pool
+        and low-coverage topics are entirely filtered out.
         """
         raw_results = await asyncio.gather(
             *[
@@ -271,10 +301,32 @@ class RetrievalPipeline:
             ]
         )
 
+        # Guarantee proportional coverage: reserve at least this many chunks
+        # per sub-query before the global rerank. Use a higher floor (5) so
+        # the answer generation gets enough context per topic.
+        slots_per_query = max(5, top_k // len(queries)) if queries else top_k
+
+        per_query_chunks = await asyncio.gather(
+            *[
+                self.reranker.rerank(
+                    query=sub_q, chunks=chunks, top_k=slots_per_query
+                )
+                for sub_q, chunks in zip(queries, raw_results)
+            ]
+        )
+
         pooled = self._deduplicate(
-            [chunk for batch in raw_results for chunk in batch])
+            [chunk for batch in per_query_chunks for chunk in batch]
+        )
         print(
-            f"[retrieve_with_decomposition] {len(pooled)} unique chunks after dedup across {len(queries)} queries")
+            f"[retrieve_with_decomposition] {len(pooled)} balanced chunks "
+            f"({slots_per_query} slots × {len(queries)} sub-queries) before global rerank"
+        )
+        # Pass score_threshold=0.0 — the per-sub-query rerank already validated
+        # each chunk against its own sub-query. Applying a global threshold here
+        # would filter out minority-topic chunks whose raw cross-encoder scores
+        # are low simply because the original query is framed around a different
+        # sub-topic (e.g. "compare A and B" scores A-chunks higher than B-chunks).
         return await self._global_rerank_and_filter(
-            original_query, pooled, top_k, score_threshold
+            original_query, pooled, len(pooled), score_threshold=0.0
         )

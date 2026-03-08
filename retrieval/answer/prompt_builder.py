@@ -90,9 +90,14 @@ def build_image_description_prompt(image_data: str) -> list:
 # ---------------------------------------------------------------------------
 
 def build_dispatcher_prompt(
-    user_text: str, critique_log: list, corpus_summary: str = ""
+    user_text: str,
+    critique_log: list,
+    corpus_summary: str = "",
+    tried_queries: list = None,
 ) -> list:
-    system_content = get_dispatcher_prompt(corpus_summary, critique_log)
+    system_content = get_dispatcher_prompt(
+        corpus_summary, critique_log, tried_queries or []
+    )
     return [
         {"role": "system", "content": system_content},
         {"role": "user", "content": user_text},

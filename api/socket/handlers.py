@@ -33,6 +33,8 @@ async def chat_stream(sid, data):
             await sio.emit("error", {"message": "No text provided"}, room=sid)
             return
 
+        enable_thinking = bool(data.get("thinking", True))
+
         retrieval_pipeline = RetrievalPipeline()
         vllm_client = VLLMClient()
         corpus_summary = get_corpus_summary()
@@ -159,7 +161,7 @@ async def chat_stream(sid, data):
         full_content = disclaimer
 
         async for chunk_type, content_chunk in vllm_client.stream(
-            prompt, tools=None, enable_thinking=True
+            prompt, tools=None, enable_thinking=enable_thinking
         ):
             if chunk_type == "thinking":
                 await sio.emit(

@@ -5,8 +5,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from pymilvus import Collection, DataType
 from infra.milvus.connection import connect_milvus
+from pymilvus import Collection, DataType
 
 connect_milvus()
 collection = Collection("chunks")
@@ -30,7 +30,7 @@ collection.create_index(
     index_params={
         "index_type": "HNSW",
         "metric_type": "IP",
-        "params": {"M": 8, "efConstruction": 64},
+        "params": {"M": 16, "efConstruction": 128},
     },
 )
 
@@ -50,7 +50,7 @@ collection.create_index(
     index_params={
         "index_type": "HNSW",
         "metric_type": "IP",
-        "params": {"M": 8, "efConstruction": 64},
+        "params": {"M": 16, "efConstruction": 128},
     },
 )
 

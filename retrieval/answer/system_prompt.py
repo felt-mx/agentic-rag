@@ -89,7 +89,9 @@ def get_image_description_prompt() -> str:
 # New prompts for the agentic dispatch / strategy loop
 # ---------------------------------------------------------------------------
 
-def get_dispatcher_prompt(corpus_summary: str, critique_log: list) -> str:
+def get_dispatcher_prompt(
+    corpus_summary: str, critique_log: list, tried_queries: list = None
+) -> str:
     corpus_section = (
         f"\n\nKnowledge Base Description:\n{corpus_summary}"
         if corpus_summary
@@ -101,10 +103,20 @@ def get_dispatcher_prompt(corpus_summary: str, critique_log: list) -> str:
         if critique_log
         else ""
     )
+    tried_section = (
+        f"\n\nQuery sets already tried (do NOT repeat these exactly — use different"
+        f" phrasing, synonyms, or narrower/broader terms):\n"
+        + "\n".join(
+            f"  Attempt {i + 1}: {queries}"
+            for i, queries in enumerate(tried_queries or [])
+        )
+        if tried_queries
+        else ""
+    )
     return f"""
         You are a retrieval strategy dispatcher for an AI RAG system.
         Your job is to analyse the user's query and choose the most effective retrieval strategy,
-        then generate the exact query strings to use for retrieval.{corpus_section}{critique_section}
+        then generate the exact query strings to use for retrieval.{corpus_section}{critique_section}{tried_section}
 
         Strategy rules:
         - Decomposition: Use when the query asks about multiple distinct subjects, contains 'and', 'but',

@@ -8,7 +8,7 @@ from pathlib import Path
 csv_path = (
     Path(__file__).parent.parent.parent
     / "documents"
-    / "train_evaluation_results_detailed_results_2.csv"
+    / "train_evaluation_results_detailed_results.csv"
 )
 
 # Common phrases that indicate the model refused to answer (case-insensitive partial match)

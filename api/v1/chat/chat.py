@@ -18,6 +18,7 @@ chat_router = APIRouter(prefix="/chat")
 class ChatRequest(BaseModel):
     text: str
     database: str = None
+    thinking: bool = True
 
 
 @chat_router.post("")
@@ -42,6 +43,9 @@ async def chat(request: ChatRequest):
                 f"queries={state.processed_queries} "
                 f"reason={state.reasoning}"
             )
+
+            # Record these queries so the dispatcher can avoid repeating them.
+            state.tried_queries.append(list(state.processed_queries))
 
             # 2. Execute the chosen strategy worker
             if state.current_strategy == "Expansion":
@@ -68,9 +72,25 @@ async def chat(request: ChatRequest):
 
             print(f"[retrieval] got {len(results)} results")
 
-            # 3. Sufficiency check
-            if results:
-                critique_prompt = build_critique_prompt(request.text, results)
+            # 3. Merge new results into the accumulated pool (dedup by text,
+            #    keep highest raw score when the same chunk appears twice).
+            acc_map = {r.get("answer", "")[:500]: r for r in state.accumulated_results}
+            for r in results:
+                key = r.get("answer", "")[:500]
+                if key not in acc_map or r.get("score", 0) > acc_map[key].get(
+                    "score", 0
+                ):
+                    acc_map[key] = r
+            state.accumulated_results = sorted(
+                acc_map.values(), key=lambda x: x.get("score", 0), reverse=True
+            )
+
+            # 4. Sufficiency check — evaluate the *accumulated* pool so we
+            #    don't discard useful chunks found in earlier iterations.
+            if state.accumulated_results:
+                critique_prompt = build_critique_prompt(
+                    request.text, state.accumulated_results
+                )
                 critique_response = await vllm_client.generate(
                     critique_prompt, tools=None, tool_choice=None
                 )
@@ -79,15 +99,16 @@ async def chat(request: ChatRequest):
                 print(f"[sufficiency] {critique_text}")
 
                 if "INSUFFICIENT" not in first_line:
-                    state.best_results = results
+                    state.best_results = state.accumulated_results
                     break
                 else:
                     lines = critique_text.splitlines()
-                    critique_sentence = lines[1].strip() if len(
-                        lines) > 1 else critique_text
+                    critique_sentence = (
+                        lines[1].strip() if len(lines) > 1 else critique_text
+                    )
                     state.critique_log.append(critique_sentence)
-                    if results and not state.best_results:
-                        state.best_results = results
+                    if not state.best_results:
+                        state.best_results = state.accumulated_results
             else:
                 state.critique_log.append("Retrieval returned no results.")
 
@@ -96,7 +117,7 @@ async def chat(request: ChatRequest):
         # ------------------------------------------------------------------
         # Exit strategy
         # ------------------------------------------------------------------
-        final_results = results if results else state.best_results
+        final_results = state.accumulated_results or state.best_results
         disclaimer = ""
 
         if not final_results:
@@ -129,7 +150,7 @@ async def chat(request: ChatRequest):
         # ------------------------------------------------------------------
         prompt = build_prompt(final_results, request.text, None)
         response = await vllm_client.generate(
-            prompt, tools=None, tool_choice=None, enable_thinking=True
+            prompt, tools=None, tool_choice=None, enable_thinking=request.thinking
         )
 
         top_result = final_results[0] if final_results else None
@@ -151,10 +172,22 @@ async def chat(request: ChatRequest):
         return {
             "data": {
                 "message": {**response, "content": answer_content},
-                "score": top_result["score"] if top_result and top_result["score"] >= RAW_SCORE_MIN else None,
+                "score": (
+                    top_result["score"]
+                    if top_result and top_result["score"] >= RAW_SCORE_MIN
+                    else None
+                ),
                 "metadata": {
-                    "source": top_result["metadata"]["file_name"] if top_result and top_result["score"] >= RAW_SCORE_MIN else None,
-                    "page": top_result["metadata"]["section_title"] if top_result and top_result["score"] >= RAW_SCORE_MIN else None,
+                    "source": (
+                        top_result["metadata"]["file_name"]
+                        if top_result and top_result["score"] >= RAW_SCORE_MIN
+                        else None
+                    ),
+                    "page": (
+                        top_result["metadata"]["section_title"]
+                        if top_result and top_result["score"] >= RAW_SCORE_MIN
+                        else None
+                    ),
                 },
                 "all_results": scores_and_metadata,
             }

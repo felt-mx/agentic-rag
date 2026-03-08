@@ -68,7 +68,7 @@ async def dispatch(
     from retrieval.answer.prompt_builder import build_dispatcher_prompt
 
     prompt = build_dispatcher_prompt(
-        user_text, state.critique_log, corpus_summary)
+        user_text, state.critique_log, corpus_summary, state.tried_queries)
 
     try:
         response = await generator.generate(
