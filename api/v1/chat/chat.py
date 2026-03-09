@@ -1,5 +1,5 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
+import base64
+from fastapi import APIRouter, File, Form, UploadFile
 from core.models.generator import VLLMClient
 from retrieval.pipeline import RetrievalPipeline
 from retrieval.state import AgentState
@@ -9,27 +9,40 @@ from retrieval.answer.prompt_builder import (
     build_prompt,
     build_critique_prompt,
     build_clarifying_question_prompt,
+    describe_image,
+    build_augmented_query,
 )
 from config.config import MILVUS_DATABASE
 
 chat_router = APIRouter(prefix="/chat")
 
 
-class ChatRequest(BaseModel):
-    text: str
-    database: str = None
-    thinking: bool = True
-
-
 @chat_router.post("")
-async def chat(request: ChatRequest):
+async def chat(
+    text: str = Form(...),
+    database: str = Form(None),
+    thinking: bool = Form(False),
+    files: list[UploadFile] = File(default=None),
+):
     try:
-        database = request.database or MILVUS_DATABASE
+        database = database or MILVUS_DATABASE
         retrieval_pipeline = RetrievalPipeline(database=database)
         vllm_client = VLLMClient()
         corpus_summary = get_corpus_summary()
 
-        state = AgentState(original_query=request.text)
+        image_descriptions = []
+        if files:
+            for file in files:
+                file_bytes = await file.read()
+                mime = file.content_type or "image/jpeg"
+                b64 = base64.b64encode(file_bytes).decode("utf-8")
+                data_uri = f"data:{mime};base64,{b64}"
+                desc = await describe_image(data_uri, vllm_client)
+                if desc:
+                    image_descriptions.append(desc)
+
+        effective_query = build_augmented_query(text, image_descriptions)
+        state = AgentState(original_query=text, image_descriptions=image_descriptions)
         results = []
 
         # ------------------------------------------------------------------
@@ -37,7 +50,7 @@ async def chat(request: ChatRequest):
         # ------------------------------------------------------------------
         while state.retries_remaining >= 0:
             # 1. Dispatch: choose strategy + processed queries
-            state = await dispatch(request.text, vllm_client, state, corpus_summary)
+            state = await dispatch(effective_query, vllm_client, state, corpus_summary)
             print(
                 f"[dispatch] strategy={state.current_strategy} "
                 f"queries={state.processed_queries} "
@@ -50,13 +63,13 @@ async def chat(request: ChatRequest):
             # 2. Execute the chosen strategy worker
             if state.current_strategy == "Expansion":
                 results = await retrieval_pipeline.retrieve_with_expansion(
-                    original_query=request.text,
+                    original_query=effective_query,
                     top_k=5,
                     retrieval_k=20,
                 )
             elif state.current_strategy == "Decomposition":
                 results = await retrieval_pipeline.retrieve_with_decomposition(
-                    original_query=request.text,
+                    original_query=effective_query,
                     queries=state.processed_queries,
                     top_k=5,
                     retrieval_k=20,
@@ -64,7 +77,7 @@ async def chat(request: ChatRequest):
             else:
                 # Hybrid: decompose then expand each sub-query
                 results = await retrieval_pipeline.retrieve_hybrid(
-                    original_query=request.text,
+                    original_query=effective_query,
                     sub_queries=state.processed_queries,
                     top_k=5,
                     retrieval_k=20,
@@ -89,7 +102,7 @@ async def chat(request: ChatRequest):
             #    don't discard useful chunks found in earlier iterations.
             if state.accumulated_results:
                 critique_prompt = build_critique_prompt(
-                    request.text, state.accumulated_results
+                    effective_query, state.accumulated_results
                 )
                 critique_response = await vllm_client.generate(
                     critique_prompt, tools=None, tool_choice=None
@@ -124,7 +137,7 @@ async def chat(request: ChatRequest):
             # Nothing useful at all — return a clarifying question in the
             # standard response shape so the frontend needs no changes.
             clarify_prompt = build_clarifying_question_prompt(
-                request.text, state.critique_log
+                effective_query, state.critique_log
             )
             clarify_response = await vllm_client.generate(
                 clarify_prompt, tools=None, tool_choice=None
@@ -148,9 +161,9 @@ async def chat(request: ChatRequest):
         # ------------------------------------------------------------------
         # Answer generation (non-streaming)
         # ------------------------------------------------------------------
-        prompt = build_prompt(final_results, request.text, None)
+        prompt = build_prompt(final_results, effective_query, None)
         response = await vllm_client.generate(
-            prompt, tools=None, tool_choice=None, enable_thinking=request.thinking
+            prompt, tools=None, tool_choice=None, enable_thinking=thinking
         )
 
         top_result = final_results[0] if final_results else None

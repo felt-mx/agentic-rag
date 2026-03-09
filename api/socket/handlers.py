@@ -1,3 +1,4 @@
+import base64
 import socketio
 from .server import get_sio
 from core.models.generator import VLLMClient
@@ -9,6 +10,8 @@ from retrieval.answer.prompt_builder import (
     build_prompt,
     build_critique_prompt,
     build_clarifying_question_prompt,
+    describe_image,
+    build_augmented_query,
 )
 
 sio = get_sio()
@@ -33,13 +36,24 @@ async def chat_stream(sid, data):
             await sio.emit("error", {"message": "No text provided"}, room=sid)
             return
 
-        enable_thinking = bool(data.get("thinking", True))
+        enable_thinking = bool(data.get("thinking", False))
 
         retrieval_pipeline = RetrievalPipeline()
         vllm_client = VLLMClient()
         corpus_summary = get_corpus_summary()
 
-        state = AgentState(original_query=user_text)
+        image_descriptions = []
+        raw_files = data.get("files") or []
+        for data_uri in raw_files:
+            if isinstance(data_uri, str) and data_uri.startswith("data:"):
+                desc = await describe_image(data_uri, vllm_client)
+                if desc:
+                    image_descriptions.append(desc)
+
+        effective_query = build_augmented_query(user_text, image_descriptions)
+        state = AgentState(
+            original_query=user_text, image_descriptions=image_descriptions
+        )
         results = []
 
         # ------------------------------------------------------------------
@@ -47,7 +61,7 @@ async def chat_stream(sid, data):
         # ------------------------------------------------------------------
         while state.retries_remaining >= 0:
             # 1. Dispatch: choose strategy + processed queries
-            state = await dispatch(user_text, vllm_client, state, corpus_summary)
+            state = await dispatch(effective_query, vllm_client, state, corpus_summary)
             await sio.emit(
                 "status",
                 {
@@ -68,14 +82,14 @@ async def chat_stream(sid, data):
             if state.current_strategy == "Expansion":
                 # LLM-based query expansion then parallel retrieval
                 results = await retrieval_pipeline.retrieve_with_expansion(
-                    original_query=user_text,
+                    original_query=effective_query,
                     top_k=5,
                     retrieval_k=20,
                 )
             elif state.current_strategy == "Decomposition":
                 # Parallel retrieval for each decomposed sub-query
                 results = await retrieval_pipeline.retrieve_with_decomposition(
-                    original_query=user_text,
+                    original_query=effective_query,
                     queries=state.processed_queries,
                     top_k=5,
                     retrieval_k=20,
@@ -83,7 +97,7 @@ async def chat_stream(sid, data):
             else:
                 # Hybrid: decompose then expand each sub-query
                 results = await retrieval_pipeline.retrieve_hybrid(
-                    original_query=user_text,
+                    original_query=effective_query,
                     sub_queries=state.processed_queries,
                     top_k=5,
                     retrieval_k=20,
@@ -93,7 +107,7 @@ async def chat_stream(sid, data):
 
             # 3. Sufficiency check
             if results:
-                critique_prompt = build_critique_prompt(user_text, results)
+                critique_prompt = build_critique_prompt(effective_query, results)
                 critique_response = await vllm_client.generate(
                     critique_prompt, tools=None, tool_choice=None
                 )
@@ -108,8 +122,9 @@ async def chat_stream(sid, data):
                 else:
                     # Extract the critique sentence (line 2 if present)
                     lines = critique_text.splitlines()
-                    critique_sentence = lines[1].strip() if len(
-                        lines) > 1 else critique_text
+                    critique_sentence = (
+                        lines[1].strip() if len(lines) > 1 else critique_text
+                    )
                     state.critique_log.append(critique_sentence)
                     if results and not state.best_results:
                         state.best_results = results
@@ -128,15 +143,13 @@ async def chat_stream(sid, data):
             # Nothing useful at all — generate a clarifying question and deliver
             # it as the answer so the frontend needs no changes.
             clarify_prompt = build_clarifying_question_prompt(
-                user_text, state.critique_log
+                effective_query, state.critique_log
             )
             clarify_response = await vllm_client.generate(
                 clarify_prompt, tools=None, tool_choice=None
             )
             clarifying_text = clarify_response.get("content", "").strip()
-            await sio.emit(
-                "stream_content", {"content": clarifying_text}, room=sid
-            )
+            await sio.emit("stream_content", {"content": clarifying_text}, room=sid)
             complete_response = {
                 "data": {
                     "message": {"content": clarifying_text},
@@ -157,16 +170,14 @@ async def chat_stream(sid, data):
         # ------------------------------------------------------------------
         # Answer generation (streaming)
         # ------------------------------------------------------------------
-        prompt = build_prompt(final_results, user_text, None)
+        prompt = build_prompt(final_results, effective_query, None)
         full_content = disclaimer
 
         async for chunk_type, content_chunk in vllm_client.stream(
             prompt, tools=None, enable_thinking=enable_thinking
         ):
             if chunk_type == "thinking":
-                await sio.emit(
-                    "stream_thinking", {"content": content_chunk}, room=sid
-                )
+                await sio.emit("stream_thinking", {"content": content_chunk}, room=sid)
             elif chunk_type == "content":
                 if content_chunk:
                     full_content += content_chunk
@@ -192,10 +203,22 @@ async def chat_stream(sid, data):
         complete_response = {
             "data": {
                 "message": {"content": full_content},
-                "score": top_result["score"] if top_result and top_result["score"] >= RAW_SCORE_MIN else None,
+                "score": (
+                    top_result["score"]
+                    if top_result and top_result["score"] >= RAW_SCORE_MIN
+                    else None
+                ),
                 "metadata": {
-                    "source": top_result["metadata"]["file_name"] if top_result and top_result["score"] >= RAW_SCORE_MIN else None,
-                    "page": top_result["metadata"]["section_title"] if top_result and top_result["score"] >= RAW_SCORE_MIN else None,
+                    "source": (
+                        top_result["metadata"]["file_name"]
+                        if top_result and top_result["score"] >= RAW_SCORE_MIN
+                        else None
+                    ),
+                    "page": (
+                        top_result["metadata"]["section_title"]
+                        if top_result and top_result["score"] >= RAW_SCORE_MIN
+                        else None
+                    ),
                 },
                 "all_results": scores_and_metadata,
             }

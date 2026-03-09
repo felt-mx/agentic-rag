@@ -4,6 +4,7 @@ from retrieval.answer.system_prompt import (
     get_reformatted_prompt,
     get_relevance_check_prompt,
     get_image_description_prompt,
+    get_chat_image_analysis_prompt,
     get_dispatcher_prompt,
     get_expansion_prompt,
     get_critique_prompt,
@@ -83,6 +84,59 @@ def build_image_description_prompt(image_data: str) -> list:
     )
 
     return prompt
+
+
+def build_chat_image_analysis_prompt(image_data: str) -> list:
+    """Prompt for the chat flow: asks the model to *interpret* the image content
+    rather than just transcribe it, producing concept-level descriptions suitable
+    for RAG query augmentation.
+    """
+    return [
+        {"role": "system", "content": get_chat_image_analysis_prompt()},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "What is this an image of? Describe the subject using clinical or domain-specific concepts only, in one sentence.",
+                },
+                {"type": "image_url", "image_url": {"url": image_data}},
+            ],
+        },
+    ]
+
+
+async def describe_image(image_data: str, vllm_client) -> str:
+    """Call the vision-capable LLM to produce an interpretive description of
+    *image_data* suitable for RAG query augmentation.
+
+    Uses ``build_chat_image_analysis_prompt`` which instructs the model to
+    interpret meaning (e.g. 'pre-diabetes') rather than only transcribe raw
+    values.  *image_data* must be a base64 data URI.
+    Returns the description string, or an empty string on failure.
+    """
+    prompt = build_chat_image_analysis_prompt(image_data)
+    try:
+        response = await vllm_client.generate(
+            prompt, tools=None, tool_choice=None, enable_thinking=False
+        )
+        return response.get("content", "").strip()
+    except Exception:
+        return ""
+
+
+def build_augmented_query(user_text: str, image_descriptions: list) -> str:
+    """Merge image descriptions with the user query into a single text string.
+
+    Returns *user_text* unchanged when the list is empty so that text-only
+    requests are completely unaffected.
+    """
+    if not image_descriptions:
+        return user_text
+    image_blocks = "\n\n".join(
+        f"[Image {i + 1}]\n{desc}" for i, desc in enumerate(image_descriptions)
+    )
+    return f"{image_blocks}\n\n[User Question]\n{user_text}"
 
 
 # ---------------------------------------------------------------------------

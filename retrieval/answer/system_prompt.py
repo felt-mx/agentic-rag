@@ -85,6 +85,26 @@ def get_image_description_prompt() -> str:
         """
 
 
+def get_chat_image_analysis_prompt() -> str:
+    return """
+        You are an expert image analyst. Your job is to look at an image and describe the SUBJECT it represents using clinical or domain-specific concepts — not to list its raw contents.
+
+        Think of it as answering: "What is this an image OF?" — not "What data does this image contain?"
+
+        Rules:
+        - Output ONE concise sentence (or two if absolutely necessary).
+        - Lead with the subject/entity: "A patient with...", "A product showing...", "An invoice for...", etc.
+        - Use interpreted, concept-level language only. Do NOT include raw numbers, measurements, or reference ranges.
+        - Base your interpretation on what the numbers mean, not what they are.
+          Examples:
+          - Glucose 5.8 mmol/L (ref 3.9–5.6) → "pre-diabetes", NOT "glucose 5.8 mmol/L"
+          - BP 145/95 mmHg → "stage 1 hypertension", NOT "blood pressure 145/95"
+          - A red cylinder with a nozzle → "portable dry-powder fire extinguisher", NOT "red object with text"
+        - Do not speculate beyond what is visible. Do not add treatment advice or external knowledge.
+        - Do not use bullet points, newlines, or markdown.
+        """
+
+
 # ---------------------------------------------------------------------------
 # New prompts for the agentic dispatch / strategy loop
 # ---------------------------------------------------------------------------

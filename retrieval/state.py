@@ -14,3 +14,5 @@ class AgentState:
     best_results: list = field(default_factory=list)
     # Results merged across all retries so partial hits aren't thrown away.
     accumulated_results: list = field(default_factory=list)
+    # Descriptions generated from user-supplied images (set before the dispatch loop).
+    image_descriptions: list = field(default_factory=list)
