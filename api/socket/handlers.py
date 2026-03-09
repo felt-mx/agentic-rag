@@ -44,8 +44,18 @@ async def chat_stream(sid, data):
 
         image_descriptions = []
         raw_files = data.get("files") or []
-        for data_uri in raw_files:
-            if isinstance(data_uri, str) and data_uri.startswith("data:"):
+        for file_entry in raw_files:
+            data_uri = None
+            if isinstance(file_entry, str) and file_entry.startswith("data:"):
+                # Already a full data URI
+                data_uri = file_entry
+            elif isinstance(file_entry, dict):
+                # { name, type, data } object sent by the frontend
+                mime = file_entry.get("type", "image/png")
+                b64 = file_entry.get("data", "")
+                if b64:
+                    data_uri = f"data:{mime};base64,{b64}"
+            if data_uri:
                 desc = await describe_image(data_uri, vllm_client)
                 if desc:
                     image_descriptions.append(desc)
