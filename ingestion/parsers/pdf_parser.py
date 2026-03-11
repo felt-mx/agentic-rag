@@ -40,43 +40,59 @@ class PDFParser(BaseParser):
 
             # Filter out "junk" images (tiled slices, tiny icons, etc.)
             # We only want images that are likely meaningful (e.g., > 100px)
-            valid_images = [img for img in image_list if img[2] > 100 and img[3] > 100]
+            valid_images = [img for img in image_list if img[2]
+                            > 100 and img[3] > 100]
 
             print(
                 f"Page {page_num + 1}: Found {len(image_list)} raw refs, "
                 f"processing {len(valid_images)} filtered image(s)"
             )
 
-            # 2. Process filtered images
-            for img_index, img in enumerate(valid_images):
-                try:
-                    xref = img[0]
-                    if xref in processed_xrefs:
-                        if xref in xref_descriptions:
-                            image_descriptions.append(
-                                f"[Image {img_index + 1}]: {xref_descriptions[xref]}"
-                            )
-                        continue
+            # 2a. If image count exceeds threshold, render whole page as one image
+            if len(valid_images) > 10:
+                print(
+                    f"Page {page_num + 1}: {len(valid_images)} images detected (>10), "
+                    f"rendering full page as single image."
+                )
+                pix = page.get_pixmap(dpi=600)
+                img_data = f"data:image/png;base64,{base64.b64encode(pix.tobytes('png')).decode('utf-8')}"
+                page_desc = await self._get_vllm_description(vllm_client, img_data)
+                if page_desc:
+                    image_descriptions.append(
+                        f"[Full Page Visual]: {page_desc}")
+            else:
+                # 2b. Process filtered images individually
+                for img_index, img in enumerate(valid_images):
+                    try:
+                        xref = img[0]
+                        if xref in processed_xrefs:
+                            if xref in xref_descriptions:
+                                image_descriptions.append(
+                                    f"[Image {img_index + 1}]: {xref_descriptions[xref]}"
+                                )
+                            continue
 
-                    processed_xrefs.add(xref)
-                    base_image = pdf_document.extract_image(xref)
-                    image_bytes = base_image["image"]
-                    image_ext = base_image["ext"]
+                        processed_xrefs.add(xref)
+                        base_image = pdf_document.extract_image(xref)
+                        image_bytes = base_image["image"]
+                        image_ext = base_image["ext"]
 
-                    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-                    image_data = f"data:image/{image_ext};base64,{image_base64}"
+                        image_base64 = base64.b64encode(
+                            image_bytes).decode("utf-8")
+                        image_data = f"data:image/{image_ext};base64,{image_base64}"
 
-                    description = await self._get_vllm_description(
-                        vllm_client, image_data
-                    )
-                    if description:
-                        xref_descriptions[xref] = description
-                        image_descriptions.append(
-                            f"[Image {img_index + 1}]: {description}"
+                        description = await self._get_vllm_description(
+                            vllm_client, image_data
                         )
+                        if description:
+                            xref_descriptions[xref] = description
+                            image_descriptions.append(
+                                f"[Image {img_index + 1}]: {description}"
+                            )
 
-                except Exception as e:
-                    print(f"Error extracting image {xref} on page {page_num + 1}: {e}")
+                    except Exception as e:
+                        print(
+                            f"Error extracting image {xref} on page {page_num + 1}: {e}")
 
             # 3. Fallback: If no text and no images found, it's likely a vector or scan
             # We render the whole page as one image to be safe.
@@ -89,13 +105,15 @@ class PDFParser(BaseParser):
 
                 page_desc = await self._get_vllm_description(vllm_client, img_data)
                 if page_desc:
-                    image_descriptions.append(f"[Full Page Visual]: {page_desc}")
+                    image_descriptions.append(
+                        f"[Full Page Visual]: {page_desc}")
 
             # 4. Contextual Text Building
             combined_text = text
             if page_num < total_pages - 1:
                 next_page_text = pdf_document[page_num + 1].get_text()
-                context_lines = "\n".join(next_page_text.split("\n")[:next_page_lines])
+                context_lines = "\n".join(
+                    next_page_text.split("\n")[:next_page_lines])
                 combined_text = f"{combined_text}\n{context_lines}"
 
             if image_descriptions:
