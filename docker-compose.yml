@@ -2,6 +2,7 @@ services:
   agentic-rag:
     container_name: agentic-rag
     build: .
+    restart: unless-stopped
     ports:
       - "19008:8000"
     environment:
