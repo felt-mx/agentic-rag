@@ -34,9 +34,14 @@ from ragas.metrics import (
     answer_relevancy,
 )
 from ragas import evaluate
+
+try:
+    from ragas.run_config import RunConfig
+except ImportError:
+    # Compatibility fallback for older/newer ragas package layouts.
+    from ragas import RunConfig
 from datasets import Dataset
 import pandas as pd
-
 
 
 # Set dummy OpenAI key to satisfy client validation
@@ -118,8 +123,9 @@ async def my_rag_pipeline_async(query: str, database: str = None):
                     break
                 else:
                     lines = critique_text.splitlines()
-                    critique_sentence = lines[1].strip() if len(
-                        lines) > 1 else critique_text
+                    critique_sentence = (
+                        lines[1].strip() if len(lines) > 1 else critique_text
+                    )
                     state.critique_log.append(critique_sentence)
                     if results and not state.best_results:
                         state.best_results = results
@@ -139,8 +145,7 @@ async def my_rag_pipeline_async(query: str, database: str = None):
             contexts = [res.get("answer", "") for res in final_results]
 
         if not final_results:
-            clarify_prompt = build_clarifying_question_prompt(
-                query, state.critique_log)
+            clarify_prompt = build_clarifying_question_prompt(query, state.critique_log)
             clarify_response = await vllm_client.generate(
                 clarify_prompt, tools=None, tool_choice=None
             )
@@ -183,7 +188,13 @@ def my_rag_pipeline(query: str, database: str = None):
 # ==========================================
 # 2. THE EVALUATION HARNESS
 # ==========================================
-def run_evaluation(csv_path, output_name, database=None, sample_size=None):
+def run_evaluation(
+    csv_path,
+    output_name,
+    database=None,
+    sample_size=None,
+    ragas_timeout_seconds=900,
+):
     print(f"--- Starting Evaluation for {csv_path} ---")
     if database:
         print(f"Using database: {database}")
@@ -193,8 +204,7 @@ def run_evaluation(csv_path, output_name, database=None, sample_size=None):
 
     # Randomly sample the dataset if sample_size is provided
     if sample_size and len(df) > sample_size:
-        print(
-            f"Sampling {sample_size} random questions from {len(df)} total...")
+        print(f"Sampling {sample_size} random questions from {len(df)} total...")
         df = df.sample(n=sample_size, random_state=42)
 
     # Parse the 'answers' column to extract ground_truth
@@ -209,20 +219,24 @@ def run_evaluation(csv_path, output_name, database=None, sample_size=None):
         import re
 
         # Pattern 1: Standard single quoted array
-        match = re.search(
-            r"'text':\s*array\(\s*\[\s*'([^']*)'\s*\]", answers_str)
+        match = re.search(r"'text':\s*array\(\s*\[\s*'([^']*)'\s*\]", answers_str)
         if match:
             return match.group(1)
 
         # Pattern 2: Double quoted array
-        match = re.search(
-            r"'text':\s*array\(\s*\[\s*\"([^\"]*)\"\s*\]", answers_str)
+        match = re.search(r"'text':\s*array\(\s*\[\s*\"([^\"]*)\"\s*\]", answers_str)
         if match:
             return match.group(1)
 
         return ""
 
     df["ground_truth"] = df["answers"].apply(extract_ground_truth)
+    empty_gt_count = int((df["ground_truth"].str.strip() == "").sum())
+    if empty_gt_count > 0:
+        print(
+            f"Warning: {empty_gt_count} rows have empty ground_truth. "
+            "Some metrics may be null for these rows regardless of timeout."
+        )
 
     # Prepare lists to store your RAG's output
     generated_answers = []
@@ -255,8 +269,7 @@ def run_evaluation(csv_path, output_name, database=None, sample_size=None):
     df["contexts"] = retrieved_contexts
 
     # Ensure we have all required columns: question, answer, contexts, ground_truth
-    print(
-        f"Dataset preview:\n{df[['question', 'answer', 'ground_truth']].head(2)}")
+    print(f"Dataset preview:\n{df[['question', 'answer', 'ground_truth']].head(2)}")
 
     # Convert to HuggingFace Dataset
     ragas_dataset = Dataset.from_pandas(
@@ -270,7 +283,10 @@ def run_evaluation(csv_path, output_name, database=None, sample_size=None):
         openai_api_base=f"http://{VLLM_API_URL}:{VLLM_GEN_API_PORT}/v1",
         openai_api_key="EMPTY",
         temperature=0,
+        max_completion_tokens=8192,
+        model_kwargs={"extra_body": {"enable_thinking": False}},
     )
+
     evaluator_embeddings = OpenAIEmbeddings(
         model=VLLM_EMBED_MODEL_NAME,
         openai_api_base=f"http://{VLLM_API_URL}:{VLLM_EMBED_API_PORT}/v1",
@@ -279,6 +295,11 @@ def run_evaluation(csv_path, output_name, database=None, sample_size=None):
 
     # Run Metrics
     print("Running RAGAS metrics calculation...")
+    run_config = RunConfig(timeout=ragas_timeout_seconds, max_workers=1, max_retries=3)
+    print(
+        f"Using RAGAS timeout: {ragas_timeout_seconds}s per metric call. "
+        "Increase this value for slow local models."
+    )
     results = evaluate(
         ragas_dataset,
         metrics=[
@@ -289,6 +310,7 @@ def run_evaluation(csv_path, output_name, database=None, sample_size=None):
         ],
         llm=evaluator_llm,
         embeddings=evaluator_embeddings,
+        run_config=run_config,
     )
 
     print(f"Scores: {results}")
@@ -297,8 +319,7 @@ def run_evaluation(csv_path, output_name, database=None, sample_size=None):
     results_df = results.to_pandas()
 
     # Define output path - prefer 'documents' folder so it's accessible outside container if mounted
-    output_path = project_root / "documents" / \
-        f"{output_name}_detailed_results.csv"
+    output_path = project_root / "documents" / f"{output_name}_detailed_results.csv"
 
     try:
         results_df.to_csv(output_path, index=False)
@@ -329,9 +350,11 @@ if __name__ == "__main__":
         sys.exit(1)
 
     SAMPLE_SIZE = 100
+    ragas_timeout_seconds = 86400
     run_evaluation(
         str(dataset_path),
         "train_evaluation_results",
         database=None,
         sample_size=SAMPLE_SIZE,
+        ragas_timeout_seconds=ragas_timeout_seconds,
     )

@@ -100,6 +100,14 @@ class RetrievalPipeline:
             print("[_global_rerank_and_filter] 0 chunks in — skipping rerank")
             return []
 
+        # print the raw chunks for debugging
+        for i, c in enumerate(chunks[:10]):
+            print(
+                f"  chunk {i}: id={c.chunk_id}, doc={c.document_id}, "
+                f"section={c.section_id}, score={c.score:.4f}, "
+                f"text={c.text}"
+            )
+
         print(
             f"[_global_rerank_and_filter] {len(chunks)} chunks before rerank")
         if self.reranker:
