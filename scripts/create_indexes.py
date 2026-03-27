@@ -6,7 +6,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from infra.milvus.connection import connect_milvus
-from pymilvus import Collection, DataType
+from pymilvus import Collection
 
 connect_milvus()
 collection = Collection("chunks")
@@ -25,7 +25,7 @@ for index in collection.indexes:
 print("Creating CPU indexes...")
 
 # Dense Vector Index (using HNSW for CPU)
-collection.create_index(
+collection.create_index(    
     field_name="dense_embedding",
     index_params={
         "index_type": "HNSW",
@@ -54,8 +54,7 @@ collection.create_index(
     },
 )
 
-# 4. Load back into memory (CPU)
-print("Loading collection into CPU RAM...")
+# 4. Load back into memory
+print("Loading collection...")
 collection.load()
-
-print("Retrieval should now be functional!")
+print("Loading completed.")
