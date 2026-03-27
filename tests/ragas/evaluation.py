@@ -284,7 +284,11 @@ def run_evaluation(
         openai_api_key="EMPTY",
         temperature=0,
         max_completion_tokens=8192,
-        model_kwargs={"extra_body": {"enable_thinking": False}},
+        model_kwargs={
+        "extra_body": {
+                "chat_template_kwargs": {"enable_thinking": False}
+            }
+        },
     )
 
     evaluator_embeddings = OpenAIEmbeddings(
@@ -322,6 +326,7 @@ def run_evaluation(
     output_path = project_root / "documents" / f"{output_name}_detailed_results.csv"
 
     try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
         results_df.to_csv(output_path, index=False)
         print(f"Saved details to {output_path}")
     except Exception as e:
