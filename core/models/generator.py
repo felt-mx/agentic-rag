@@ -45,7 +45,8 @@ class VLLMClient:
                         if "choices" in data and len(data["choices"]) > 0:
                             delta = data["choices"][0].get("delta", {})
 
-                            reasoning = delta.get("reasoning", "")
+                            reasoning = delta.get("reasoning", "") or delta.get(
+                                "reasoning_content", "")
                             if reasoning:
                                 yield ("thinking", reasoning)
 
