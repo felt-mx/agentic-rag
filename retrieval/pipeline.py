@@ -11,8 +11,8 @@ from core.models.generator import VLLMClient as GeneratorClient
 class RetrievalPipeline:
     def __init__(
         self,
-        dense_weight: float = 0.7,
-        sparse_weight: float = 0.3,
+        dense_weight: float = 0.4,
+        sparse_weight: float = 0.6,
         database: str = None,
     ):
         self.retriever = HybridRetriever(database=database)

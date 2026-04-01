@@ -15,13 +15,21 @@ csv_path = (
 REJECTION_PHRASES = [
     "no relevant information found",
     "no information available",
+    "no information",
     "not mentioned",
     "does not provide",
     "i cannot answer",
     "no answer",
     "i'm sorry",
+    "i am sorry",
+    "does not contain",
     "knowledge base",
     "i don't know",
+    "not possible",
+    "not explicitly",
+    "there is no",
+    "there are no",
+    "does not specify",
 ]
 
 
@@ -53,7 +61,8 @@ def calculate_confusion_matrix(file_path):
         # LOGIC:
         # 1. Does a Ground Truth exist? (Is it answerable?)
         # Check for empty strings, 'nan', or empty brackets if cleaning failed
-        has_ground_truth = (len(gt) > 0) and (gt.lower() != "nan") and (gt != "[]")
+        has_ground_truth = (len(gt) > 0) and (
+            gt.lower() != "nan") and (gt != "[]")
 
         # 2. Did the System provide an answer?
         # It answered if NONE of the rejection phrases are in the prediction (normalized to lower case)

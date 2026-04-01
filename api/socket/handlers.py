@@ -117,7 +117,8 @@ async def chat_stream(sid, data):
 
             # 3. Sufficiency check
             if results:
-                critique_prompt = build_critique_prompt(effective_query, results)
+                critique_prompt = build_critique_prompt(
+                    effective_query, results)
                 critique_response = await vllm_client.generate(
                     critique_prompt, tools=None, tool_choice=None
                 )

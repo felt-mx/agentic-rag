@@ -38,7 +38,8 @@ class HybridRetriever:
 
         # BM25 sparse search
         sparse_request = AnnSearchRequest(
-            data=[query_text],  # Pass raw text as Milvus will handle BM25 embedding
+            # Pass raw text as Milvus will handle BM25 embedding
+            data=[query_text],
             anns_field="sparse_embedding",
             param={
                 "metric_type": "BM25",
@@ -77,7 +78,8 @@ class HybridRetriever:
             reqs=search_requests,
             rerank=ranker,
             limit=top_k,
-            output_fields=["chunk_id", "document_id", "section_id", "text", "metadata"],
+            output_fields=["chunk_id", "document_id",
+                           "section_id", "text", "metadata"],
         )
 
         hits = results[0]
