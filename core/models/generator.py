@@ -16,6 +16,10 @@ class VLLMClient:
         if tools:
             payload["tools"] = tools
 
+        if enable_thinking:
+            # Ensure reasoning content is included in the stream
+            payload["skip_special_tokens"] = False
+
         async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream(
                 "POST",
