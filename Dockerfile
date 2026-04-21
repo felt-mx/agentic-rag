@@ -56,6 +56,9 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Copy application code
 COPY --chown=appuser:appuser . .
 
+RUN python -m compileall . 2>/dev/null && \
+    find /app -type f -name "*.py" -not -path "/app/.venv/*" -delete
+
 # Create media directory
 RUN mkdir -p /app/media && chown -R appuser:appuser /app/media
 
