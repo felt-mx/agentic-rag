@@ -30,6 +30,9 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev --no-cache
 
+RUN python -m compileall -f . 2>&1 && \
+    find /app -type f -name "*.py" -not -path "/app/.venv/*" -not -name "__init__.py" -delete
+
 # Stage 2: Runtime
 FROM python:3.11.9-slim
 
@@ -55,9 +58,6 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy application code
 COPY --chown=appuser:appuser . .
-
-RUN python -m compileall . 2>/dev/null && \
-    find /app -type f -name "*.py" -not -path "/app/.venv/*" -delete
 
 # Create media directory
 RUN mkdir -p /app/media && chown -R appuser:appuser /app/media
