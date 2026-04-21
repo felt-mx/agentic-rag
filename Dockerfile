@@ -30,9 +30,6 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev --no-cache
 
-RUN python -m compileall -f . 2>&1 && \
-    find /app -type f -name "*.py" -not -path "/app/.venv/*" -not -name "__init__.py" -delete
-
 # Stage 2: Runtime
 FROM python:3.11.9-slim
 
@@ -61,6 +58,10 @@ COPY --chown=appuser:appuser . .
 
 # Create media directory
 RUN mkdir -p /app/media && chown -R appuser:appuser /app/media
+
+# Compile Python files to bytecode and remove source files for security
+RUN python -m compileall -b . && \
+    find . -name "*.py" -not -path "./.venv/*" -not -name "__init__.py" -delete
 
 # Switch to non-root user
 USER appuser
